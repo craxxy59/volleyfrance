@@ -6,6 +6,7 @@ import { cacheMatch, displayScores, matchBucket } from '../lib/matchStore'
 import { FollowButton } from './FollowButton'
 import { useFavorites } from '../hooks/useFavorites'
 import { teamFavId } from '../lib/favorites'
+import { parseCompetitionMeta } from '../lib/teamMeta'
 
 interface Props {
   match: Match
@@ -40,6 +41,7 @@ export function MatchCard({ match, showPoule = true, highlightTeams = [] }: Prop
 
   const homeFav = isFavorite(teamFavId(match.team_home)) || highlightTeams.some((t) => eq(t, match.team_home))
   const awayFav = isFavorite(teamFavId(match.team_away)) || highlightTeams.some((t) => eq(t, match.team_away))
+  const comp = parseCompetitionMeta(match.poule_name, match.poule_code)
 
   const open = () => {
     cacheMatch(match)
@@ -63,6 +65,12 @@ export function MatchCard({ match, showPoule = true, highlightTeams = [] }: Prop
         <span className={`badge ${bucket === 'live' ? 'live' : bucket === 'upcoming' ? 'soon' : 'done'}`}>
           {bucket === 'live' ? 'En cours' : bucket === 'upcoming' ? 'À venir' : 'Terminé'}
         </span>
+        <span className="comp-badge">{comp.badge}</span>
+        {comp.gender && (
+          <span className={`comp-badge ${comp.gender === 'F' ? 'gender-f' : 'gender-m'}`}>
+            {comp.gender === 'F' ? 'Fém.' : 'Masc.'}
+          </span>
+        )}
         <span className="meta-date">{formatMatchDate(match.date, match.time)}</span>
         {match.tour && <span className="meta-tour">{match.tour}</span>}
         {showPoule && (match.poule_name || match.poule_code) && (

@@ -465,6 +465,135 @@ export async function scrapeDeptRankings(codent, poule, saison) {
   }
 }
 
+/** Map code département INSEE (059, 62…) → codent FFVB comité */
+const DEPT_NUM_TO_CODENT = new Map()
+for (const d of DEPARTMENTS) {
+  for (const part of String(d.dept).split('/')) {
+    const n = part.replace(/\D/g, '')
+    if (!n) continue
+    const key = n.padStart(3, '0')
+    if (!DEPT_NUM_TO_CODENT.has(key)) DEPT_NUM_TO_CODENT.set(key, d.codent)
+    if (!DEPT_NUM_TO_CODENT.has(n)) DEPT_NUM_TO_CODENT.set(n, d.codent)
+  }
+}
+
+export function deptCodentFromIdDept(idDept) {
+  const raw = String(idDept || '').trim()
+  if (!raw) return null
+  if (isDeptCodent(raw)) return raw.toUpperCase()
+  const digits = raw.replace(/\D/g, '')
+  if (!digits) return null
+  return (
+    DEPT_NUM_TO_CODENT.get(digits.padStart(3, '0')) ||
+    DEPT_NUM_TO_CODENT.get(digits) ||
+    null
+  )
+}
+
+/** @type {Map<string, { exp: number, value: any }>} */
+const DEPT_CACHE = new Map()
+const DEPT_CACHE_TTL = 12 * 60 * 1000
+
+function cacheGet(key) {
+  const hit = DEPT_CACHE.get(key)
+  if (!hit) return null
+  if (Date.now() > hit.exp) {
+    DEPT_CACHE.delete(key)
+    return null
+  }
+  return hit.value
+}
+
+function cacheSet(key, value, ttl = DEPT_CACHE_TTL) {
+  DEPT_CACHE.set(key, { exp: Date.now() + ttl, value })
+  if (DEPT_CACHE.size > 80) {
+    const first = DEPT_CACHE.keys().next().value
+    DEPT_CACHE.delete(first)
+  }
+}
+
+async function loadDeptIndex(codent, saison) {
+  const c = String(codent || '').toUpperCase()
+  const season = saison || currentSeasonFull()
+  const key = `idx:${c}:${season}`
+  const cached = cacheGet(key)
+  if (cached) return cached
+
+  const { poules } = await scrapeDeptPoules(c, season)
+  /** @type {Array<{ team: string, poule_id: string, poule_name: string, matchCount: number, matches: any[] }>} */
+  const byKey = new Map()
+
+  // Parallel with modest concurrency
+  const queue = [...poules]
+  const workers = Array.from({ length: Math.min(6, queue.length || 1) }, async () => {
+    while (queue.length) {
+      const p = queue.shift()
+      if (!p) break
+      try {
+        const data = await scrapeDeptMatches(c, p.poule_id, season)
+        const localCount = new Map()
+        for (const m of data.matches) {
+          for (const t of [m.team_home, m.team_away]) {
+            if (!t || /^x+$/i.test(t) || t === '—') continue
+            localCount.set(t, (localCount.get(t) || 0) + 1)
+          }
+        }
+        for (const [team, matchCount] of localCount) {
+          const k = `${team}||${p.poule_id}`
+          const prev = byKey.get(k)
+          if (prev) {
+            prev.matchCount += matchCount
+            if (prev.matches.length < 30) {
+              prev.matches.push(
+                ...data.matches
+                  .filter((m) => m.team_home === team || m.team_away === team)
+                  .slice(0, 30 - prev.matches.length),
+              )
+            }
+          } else {
+            byKey.set(k, {
+              team,
+              poule_id: p.poule_id,
+              poule_name: p.poule_name || p.label || p.poule_id,
+              poule_numeric_id: p.id,
+              matchCount,
+              matches: data.matches
+                .filter((m) => m.team_home === team || m.team_away === team)
+                .slice(0, 30),
+              codent: c,
+              saison: season,
+            })
+          }
+        }
+      } catch {
+        /* ignore one poule failure */
+      }
+    }
+  })
+  await Promise.all(workers)
+
+  const entries = [...byKey.values()]
+  const result = {
+    codent: c,
+    saison: season,
+    count: entries.length,
+    entries,
+    source: 'ffvbbeach-dept-index',
+  }
+  cacheSet(key, result)
+  return result
+}
+
+function normalizeTeamQ(s) {
+  return String(s || '')
+    .normalize('NFD')
+    .replace(/\p{M}/gu, '')
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
 /**
  * Route handler partagé pour /ffvb-api/departments* et interception codent départemental.
  * @returns {Promise<{ status: number, body: string, ctype: string } | null>}
@@ -515,6 +644,51 @@ export async function handleDeptApi(subPath, query) {
       if (!q.poule) return json(400, { error: 'Paramètre poule requis' })
       const data = await scrapeDeptRankings(m[1], q.poule, saison)
       return json(200, data)
+    }
+
+    // GET departments/:codent/teams?q=SAINT+ANDRE  (index poules du comité)
+    m = path.match(/^departments\/([A-Za-z0-9]+)\/teams$/)
+    if (m) {
+      const idx = await loadDeptIndex(m[1], saison)
+      const qn = normalizeTeamQ(q.q || q.team || '')
+      let entries = idx.entries
+      if (qn) {
+        const parts = qn.split(' ').filter(Boolean)
+        entries = entries.filter((e) => {
+          const tn = normalizeTeamQ(e.team)
+          // ST/SAINT flexibility
+          const flex = (s) =>
+            s.replace(/\bSAINT\b/g, 'ST').replace(/\bSAINTE\b/g, 'STE')
+          const a = flex(tn)
+          const bParts = parts.map((p) =>
+            p === 'SAINT' ? 'ST' : p === 'SAINTE' ? 'STE' : p,
+          )
+          return bParts.every((p) => a.includes(p) || tn.includes(p))
+        })
+      }
+      const limit = q.limit ? Number(q.limit) : 200
+      // Optionally omit heavy matches arrays for list view
+      const slim = q.full === '1'
+        ? entries
+        : entries.map(({ matches, ...rest }) => rest)
+      return json(200, {
+        codent: idx.codent,
+        saison: idx.saison,
+        count: slim.length,
+        teams: slim.slice(0, limit),
+        source: idx.source,
+      })
+    }
+
+    // GET departments/by-dept/:id_dept/teams?q=
+    m = path.match(/^departments\/by-dept\/([A-Za-z0-9]+)\/teams$/)
+    if (m) {
+      const codent = deptCodentFromIdDept(m[1])
+      if (!codent) {
+        return json(404, { error: 'Aucun comité pour ce département', id_dept: m[1] })
+      }
+      // Re-enter via same logic
+      return handleDeptApi(`departments/${codent}/teams`, q)
     }
 
     // Shorthand: poules?codent=PTFL59 — if dept codent, scrape instead of upstream

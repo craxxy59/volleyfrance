@@ -22,6 +22,7 @@ import {
   discoverClubTeams,
   filterMatchesForClub,
   filterMatchesForTeam,
+  groupClubTeams,
   type ClubTeamInfo,
 } from '../lib/clubTeams'
 import { matchBucket, type MatchBucket } from '../lib/matchStore'
@@ -43,7 +44,7 @@ export function ClubDetailPage() {
 
   const [tab, setTab] = useState<Tab>('equipes')
   const [teamQuery, setTeamQuery] = useState('')
-  const [selectedTeam, setSelectedTeam] = useState<string | null>(null)
+  const [selectedTeam, setSelectedTeam] = useState<ClubTeamInfo | null>(null)
   const [bucket, setBucket] = useState<MatchBucket>('all')
 
   useEffect(() => {
@@ -95,29 +96,28 @@ export function ClubDetailPage() {
       (t) =>
         t.name.toLowerCase().includes(q) ||
         t.base.toLowerCase().includes(q) ||
+        t.meta.badge.toLowerCase().includes(q) ||
+        t.meta.label.toLowerCase().includes(q) ||
+        t.pouleName.toLowerCase().includes(q) ||
         (t.number && t.number.includes(q)),
     )
   }, [teams, teamQuery])
 
-  const teamGroups = useMemo(() => {
-    const map = new Map<string, ClubTeamInfo[]>()
-    filteredTeams.forEach((t) => {
-      const list = map.get(t.base) || []
-      list.push(t)
-      map.set(t.base, list)
-    })
-    return [...map.entries()]
-  }, [filteredTeams])
+  const teamGroups = useMemo(() => groupClubTeams(filteredTeams), [filteredTeams])
 
   const visibleMatches = useMemo(() => {
     let list = matches
-    if (selectedTeam) list = filterMatchesForTeam(list, selectedTeam)
+    if (selectedTeam) {
+      list = filterMatchesForTeam(list, selectedTeam.name, selectedTeam.pouleCode)
+    }
     if (bucket !== 'all') list = list.filter((m) => matchBucket(m.status) === bucket)
     return sortMatchesChrono(list, bucket === 'upcoming' ? 'asc' : 'desc')
   }, [matches, selectedTeam, bucket])
 
   const matchCounts = useMemo(() => {
-    const base = selectedTeam ? filterMatchesForTeam(matches, selectedTeam) : matches
+    const base = selectedTeam
+      ? filterMatchesForTeam(matches, selectedTeam.name, selectedTeam.pouleCode)
+      : matches
     const c: Partial<Record<MatchBucket, number>> = {
       all: base.length,
       live: 0,
@@ -135,6 +135,9 @@ export function ClubDetailPage() {
     return (
       <div className="page detail-page">
         <SkeletonList count={5} />
+        <p style={{ textAlign: 'center', color: 'var(--text-dim)', fontSize: '0.8rem' }}>
+          Chargement des équipes (régional + départemental)…
+        </p>
       </div>
     )
   }
@@ -191,7 +194,6 @@ export function ClubDetailPage() {
         </button>
       </div>
 
-      {/* Club hero */}
       <section className="club-hero">
         <div className="club-hero-glow" aria-hidden />
         <div className="club-hero-top">
@@ -221,7 +223,7 @@ export function ClubDetailPage() {
         <div className="club-hero-stats">
           <div>
             <strong>{teams.length}</strong>
-            <span>équipe{teams.length > 1 ? 's' : ''}</span>
+            <span>compétition{teams.length > 1 ? 's' : ''}</span>
           </div>
           <div>
             <strong>{matches.length}</strong>
@@ -234,7 +236,6 @@ export function ClubDetailPage() {
         </div>
       </section>
 
-      {/* Tabs */}
       <div className="club-tabs" role="tablist">
         {(
           [
@@ -257,7 +258,6 @@ export function ClubDetailPage() {
         ))}
       </div>
 
-      {/* ÉQUIPES */}
       {tab === 'equipes' && (
         <>
           <div className="search-bar">
@@ -265,7 +265,7 @@ export function ClubDetailPage() {
             <input
               value={teamQuery}
               onChange={(e) => setTeamQuery(e.target.value)}
-              placeholder="Rechercher une équipe du club…"
+              placeholder="M18, féminin, équipe 3…"
               autoComplete="off"
             />
           </div>
@@ -278,16 +278,19 @@ export function ClubDetailPage() {
           ) : filteredTeams.length === 0 ? (
             <EmptyState title="Aucun résultat" subtitle="Modifie ta recherche." />
           ) : (
-            teamGroups.map(([base, list]) => (
-              <div key={base} className="team-group">
-                <div className="group-title">{titleCase(base)}</div>
-                {list.map((t) => (
-                  <div key={t.name} className="card team-row">
+            teamGroups.map((group) => (
+              <div key={group.key} className="team-group">
+                <div className="group-title team-group-title">
+                  <span>{group.title}</span>
+                  <span className="team-group-count">{group.teams.length}</span>
+                </div>
+                {group.teams.map((t) => (
+                  <div key={t.id} className="card team-row">
                     <button
                       type="button"
                       className="team-row-main"
                       onClick={() => {
-                        setSelectedTeam(t.name)
+                        setSelectedTeam(t)
                         setTab('matchs')
                         setBucket('all')
                       }}
@@ -296,20 +299,58 @@ export function ClubDetailPage() {
                         <Users size={16} />
                       </div>
                       <div className="team-row-body">
-                        <div className="team-row-name">{t.name}</div>
+                        <div className="team-row-name">
+                          {t.name}
+                          {t.number ? (
+                            <span className="team-num-pill">n°{t.number}</span>
+                          ) : null}
+                        </div>
+                        <div className="team-row-badges">
+                          <span
+                            className={`comp-badge cat-${slug(t.meta.category)}`}
+                            title={t.meta.label}
+                          >
+                            {t.meta.category}
+                          </span>
+                          {t.meta.gender && (
+                            <span
+                              className={`comp-badge ${t.meta.gender === 'F' ? 'gender-f' : 'gender-m'}`}
+                            >
+                              {t.meta.gender === 'F' ? 'Féminin' : 'Masculin'}
+                            </span>
+                          )}
+                          {(t.meta.level || t.meta.phase) && (
+                            <span className="comp-badge level">
+                              {t.meta.level || t.meta.phase}
+                            </span>
+                          )}
+                          {t.levelScope === 'departemental' && (
+                            <span className="comp-badge scope-dept">Dépt.</span>
+                          )}
+                          {t.levelScope === 'national' && (
+                            <span className="comp-badge scope-nat">Nat.</span>
+                          )}
+                        </div>
                         <div className="team-row-meta">
-                          {t.number ? `Équipe ${t.number}` : 'Équipe'}
+                          {t.pouleCode}
+                          {t.pouleName && t.pouleName !== t.pouleCode
+                            ? ` · ${shortPoule(t.pouleName)}`
+                            : ''}
                           {t.matchCount > 0
                             ? ` · ${t.matchCount} match${t.matchCount > 1 ? 's' : ''}`
-                            : ' · pas de match chargé'}
+                            : ' · calendrier à venir'}
                         </div>
                       </div>
                       <ChevronRight size={18} className="team-row-chevron" />
                     </button>
                     <div className="team-row-actions">
-                      <FollowButton teamName={t.name} meta={club.name} size="sm" />
+                      <FollowButton
+                        teamName={t.name}
+                        meta={`${t.meta.badge}${t.meta.level ? ` · ${t.meta.level}` : ''}`}
+                        size="sm"
+                      />
                       <Link
-                        to={`/equipe/${encodeURIComponent(t.name)}`}
+                        to={`/equipe/${encodeURIComponent(t.name)}?poule=${encodeURIComponent(t.pouleCode)}&codent=${encodeURIComponent(t.codent)}`}
                         className="team-row-link"
                         onClick={(e) => e.stopPropagation()}
                       >
@@ -324,7 +365,6 @@ export function ClubDetailPage() {
         </>
       )}
 
-      {/* MATCHS */}
       {tab === 'matchs' && (
         <>
           {teams.length > 0 && (
@@ -334,16 +374,18 @@ export function ClubDetailPage() {
                 className={`chip${selectedTeam === null ? ' active' : ''}`}
                 onClick={() => setSelectedTeam(null)}
               >
-                Toutes les équipes
+                Toutes
               </button>
-              {teams.slice(0, 12).map((t) => (
+              {teams.slice(0, 16).map((t) => (
                 <button
-                  key={t.name}
+                  key={t.id}
                   type="button"
-                  className={`chip ghost${selectedTeam === t.name ? ' active' : ''}`}
-                  onClick={() => setSelectedTeam(t.name)}
+                  className={`chip ghost${selectedTeam?.id === t.id ? ' active' : ''}`}
+                  onClick={() => setSelectedTeam(t)}
                 >
-                  {t.name}
+                  {t.meta.badge}
+                  {t.number ? ` · ${t.number}` : ''}
+                  {t.meta.level ? ` · ${shortLevel(t.meta.level)}` : ''}
                 </button>
               ))}
             </div>
@@ -359,10 +401,16 @@ export function ClubDetailPage() {
           {selectedTeam && (
             <div className="selected-team-banner">
               <span>
-                Filtre : <strong>{selectedTeam}</strong>
+                Filtre : <strong>{selectedTeam.name}</strong>
+                <span className="team-row-badges" style={{ display: 'inline-flex', marginLeft: 8 }}>
+                  <span className="comp-badge">{selectedTeam.meta.badge}</span>
+                  {selectedTeam.meta.level && (
+                    <span className="comp-badge level">{selectedTeam.meta.level}</span>
+                  )}
+                </span>
               </span>
               <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                <FollowButton teamName={selectedTeam} showLabel size="sm" />
+                <FollowButton teamName={selectedTeam.name} showLabel size="sm" />
                 <button type="button" className="text-btn" onClick={() => setSelectedTeam(null)}>
                   Tout voir
                 </button>
@@ -375,7 +423,7 @@ export function ClubDetailPage() {
               title="Aucun match"
               subtitle={
                 selectedTeam
-                  ? 'Pas de rencontre pour cette équipe avec ce filtre.'
+                  ? 'Pas de rencontre pour cette compétition avec ce filtre.'
                   : 'Aucun match strictement rattaché à ce club pour la saison.'
               }
             />
@@ -385,9 +433,7 @@ export function ClubDetailPage() {
                 key={m.match_id}
                 match={m}
                 highlightTeams={
-                  selectedTeam
-                    ? [selectedTeam]
-                    : teams.map((t) => t.name)
+                  selectedTeam ? [selectedTeam.name] : teams.map((t) => t.name)
                 }
               />
             ))
@@ -395,7 +441,6 @@ export function ClubDetailPage() {
         </>
       )}
 
-      {/* CONTACT */}
       {tab === 'contact' && (
         <div className="contact-list" style={{ marginTop: 4 }}>
           {cityLine && (
@@ -451,4 +496,25 @@ function normalizeLoose(s: string) {
     .toUpperCase()
     .replace(/[^A-Z0-9]+/g, ' ')
     .trim()
+}
+
+function slug(s: string) {
+  return s
+    .normalize('NFD')
+    .replace(/\p{M}/gu, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+}
+
+function shortPoule(name: string) {
+  return name.replace(/^[A-Z0-9]+ - /, '').slice(0, 52)
+}
+
+function shortLevel(level: string) {
+  return level
+    .replace('Pré-nationale', 'PN')
+    .replace('Régionale ', 'R')
+    .replace('Départementale', 'Dép.')
+    .replace('Accession régionale', 'Acc.')
+    .replace('Nationale ', 'N')
 }

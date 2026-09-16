@@ -130,7 +130,47 @@ export async function fetchDeptRankings(
   codent: string,
   pouleCode: string,
 ): Promise<{ rankings: RankingRow[]; poule_name?: string; count: number }> {
-  return getJson(`${FFVB}/departments/${encodeURIComponent(codent)}/rankings${qs({ poule: pouleCode })}`)
+  return getJson(
+    `${FFVB}/departments/${encodeURIComponent(codent)}/rankings${qs({ poule: pouleCode })}`,
+  )
+}
+
+export interface DeptTeamEntry {
+  team: string
+  poule_id: string
+  poule_name: string
+  poule_numeric_id?: number
+  matchCount: number
+  codent: string
+  saison?: string
+  matches?: Match[]
+}
+
+/** Équipes d’un comité départemental (index scrape, filtrable) */
+export async function fetchDeptTeams(opts: {
+  codent?: string
+  idDept?: string
+  q?: string
+  limit?: number
+  full?: boolean
+  saison?: string
+}): Promise<DeptTeamEntry[]> {
+  const { codent, idDept, q, limit, full, saison } = opts
+  const path = codent
+    ? `${FFVB}/departments/${encodeURIComponent(codent)}/teams`
+    : idDept
+      ? `${FFVB}/departments/by-dept/${encodeURIComponent(idDept)}/teams`
+      : null
+  if (!path) return []
+  try {
+    const data = await getJson<{ teams: DeptTeamEntry[]; count: number }>(
+      `${path}${qs({ q, limit, full: full ? '1' : undefined, saison })}`,
+      { retries: 2 },
+    )
+    return data.teams || []
+  } catch {
+    return []
+  }
 }
 
 export async function fetchNationalMatches(params: {
