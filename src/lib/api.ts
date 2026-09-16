@@ -3,18 +3,71 @@ import type { Club, Entity, LiveMatch, Match, Poule, RankingRow, Stats } from '.
 const FFVB = '/ffvb-api'
 const FFVOLLEY = '/ffvolley-api'
 
-async function getJson<T>(url: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(url, {
-    ...init,
-    headers: {
-      Accept: 'application/json',
-      ...(init?.headers || {}),
-    },
-  })
-  if (!res.ok) {
-    throw new Error(`HTTP ${res.status} — ${url}`)
+function sleep(ms: number) {
+  return new Promise((r) => setTimeout(r, ms))
+}
+
+function isRetryableStatus(status: number) {
+  return status === 404 || status === 408 || status === 425 || status === 429 || status >= 500
+}
+
+async function getJson<T>(url: string, init?: RequestInit & { retries?: number }): Promise<T> {
+  const retries = init?.retries ?? 3
+  let lastError: Error | null = null
+
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const res = await fetch(url, {
+        ...init,
+        headers: {
+          Accept: 'application/json',
+          ...(init?.headers || {}),
+        },
+        cache: 'no-store',
+      })
+
+      if (!res.ok) {
+        const text = await res.text().catch(() => '')
+        const retryable =
+          isRetryableStatus(res.status) ||
+          /NOT_FOUND|page could not be found|indisponible/i.test(text)
+
+        if (retryable && attempt < retries) {
+          lastError = new Error(`HTTP ${res.status} — ${url}`)
+          await sleep(280 * (attempt + 1) + Math.random() * 150)
+          continue
+        }
+
+        let detail = text.slice(0, 180)
+        try {
+          const j = JSON.parse(text)
+          detail = j.detail || j.error || j.message || detail
+        } catch {
+          /* keep */
+        }
+        throw new Error(
+          typeof detail === 'string' && detail.length < 120
+            ? `HTTP ${res.status} — ${detail}`
+            : `HTTP ${res.status} — ${url}`,
+        )
+      }
+
+      return (await res.json()) as T
+    } catch (err) {
+      lastError = err instanceof Error ? err : new Error(String(err))
+      // Network / abort — retry
+      if (attempt < retries && !(lastError.message.startsWith('HTTP 4') && !lastError.message.includes('404'))) {
+        if (/HTTP 4\d\d/.test(lastError.message) && !/404/.test(lastError.message)) {
+          break
+        }
+        await sleep(280 * (attempt + 1))
+        continue
+      }
+      throw lastError
+    }
   }
-  return res.json() as Promise<T>
+
+  throw lastError || new Error(`Échec — ${url}`)
 }
 
 function qs(params: Record<string, string | number | undefined | null>) {
@@ -121,7 +174,7 @@ let clubsPromise: Promise<Club[]> | null = null
 export async function fetchClubs(force = false): Promise<Club[]> {
   if (!force && clubsCache) return clubsCache
   if (!force && clubsPromise) return clubsPromise
-  clubsPromise = getJson<Club[]>(`${FFVOLLEY}/v3/clubs`)
+  clubsPromise = getJson<Club[]>(`${FFVOLLEY}/v3/clubs`, { retries: 2 })
     .then((list) => {
       clubsCache = (list || []).filter((c) => c.is_active !== false)
       return clubsCache
@@ -138,7 +191,7 @@ export async function fetchLiveMatches(): Promise<LiveMatch[]> {
     const data = await getJson<{ matches: LiveMatch[]; count: number }>(`${FFVB}/fetch_matches`)
     return data.matches || []
   } catch {
-    return getJson<LiveMatch[]>(`${FFVOLLEY}/v3/livescore/matches`)
+    return getJson<LiveMatch[]>(`${FFVOLLEY}/v3/livescore/matches`, { retries: 2 })
   }
 }
 

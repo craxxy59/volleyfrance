@@ -32,25 +32,46 @@ export function HomePage() {
     setLoading(true)
     setError(null)
     try {
-      const [g, n, past, soon, h, clubs] = await Promise.all([
+      // allSettled: one flaky endpoint must not blank the whole home
+      const results = await Promise.allSettled([
         fetchGlobalStats(),
         fetchNationalStats(),
         fetchNationalMatches({ status: 'completed', limit: 8 }),
         fetchNationalMatches({ status: 'scheduled', limit: 8 }),
         fetchMatches({ codent: 'LIFL', limit: 6 }),
-        fetchClubs().catch(() => []),
+        fetchClubs(),
       ])
-      setStats(g)
-      setNatStats(n)
-      setRecent(sortMatchesChrono(past.matches || [], 'desc').slice(0, 5))
-      setUpcoming(
-        sortMatchesChrono(
-          (soon.matches || []).filter((m) => matchBucket(m.status) === 'upcoming'),
-          'asc',
-        ).slice(0, 4),
-      )
-      setHdf(sortMatchesChrono(h.matches || [], 'desc').slice(0, 4))
-      setClubCount(clubs.length)
+
+      const val = <T,>(i: number): T | null =>
+        results[i].status === 'fulfilled' ? (results[i] as PromiseFulfilledResult<T>).value : null
+
+      const g = val<Stats>(0)
+      const n = val<Stats>(1)
+      const past = val<{ matches: Match[] }>(2)
+      const soon = val<{ matches: Match[] }>(3)
+      const h = val<{ matches: Match[] }>(4)
+      const clubs = val<unknown[]>(5)
+
+      if (g) setStats(g)
+      if (n) setNatStats(n)
+      if (past) setRecent(sortMatchesChrono(past.matches || [], 'desc').slice(0, 5))
+      if (soon) {
+        setUpcoming(
+          sortMatchesChrono(
+            (soon.matches || []).filter((m) => matchBucket(m.status) === 'upcoming'),
+            'asc',
+          ).slice(0, 4),
+        )
+      }
+      if (h) setHdf(sortMatchesChrono(h.matches || [], 'desc').slice(0, 4))
+      if (clubs) setClubCount(clubs.length)
+
+      const failed = results.filter((r) => r.status === 'rejected').length
+      // Only hard-fail if everything is down
+      if (failed === results.length) {
+        const first = results.find((r) => r.status === 'rejected') as PromiseRejectedResult
+        setError(first.reason instanceof Error ? first.reason.message : 'Erreur de chargement')
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Erreur de chargement')
     } finally {
