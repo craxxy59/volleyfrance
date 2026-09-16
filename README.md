@@ -1,40 +1,56 @@
 # VolleyFrance
 
-PWA dark-sport pour suivre le **volley français** : clubs FFVolley, compétitions nationales / régionales / départementales, scores, poules et classements.
+PWA dark-sport pour suivre le **volley français** : clubs FFVolley, compétitions nationales / régionales / départementales, scores, poules, classements, suivi d’équipes.
 
 ## Stack
 
-- React + TypeScript + Vite
-- PWA (vite-plugin-pwa)
+- React + TypeScript + Vite + PWA
 - Données live :
   - `api.my.ffvolley.org` — clubs & livescore
-  - `volley-ball.vercel.app/api` — résultats / poules / classements (agrégat FFVB saison)
+  - agrégat résultats FFVB — poules / scores / classements
+- Proxy same-origin obligatoire (CORS) :
+  - **Local** : `server.mjs` (`npm run dev`)
+  - **Prod** : fonctions Vercel dans `api/` + `vercel.json`
 
-## Dev
+## Dev local
 
 ```bash
 npm install
 npm run dev
 ```
 
-L’app écoute sur `0.0.0.0:5173` via `server.mjs` (Vite + proxies same-origin) :
+→ http://localhost:5173  
 
-- `/ffvb-api/*` → `https://volley-ball.vercel.app/api/*`
-- `/ffvolley-api/*` → `https://api.my.ffvolley.org/*`
+- `/ffvb-api/*` → résultats  
+- `/ffvolley-api/*` → clubs / live  
 
-> Les APIs externes n’envoient pas de CORS ouverts : le proxy same-origin est **obligatoire**.
+## Build
 
 ```bash
-npm run build && npm start   # prod locale
+npm run build
+npm start          # sert dist/ + proxies (Node)
 ```
 
+## Publier pour tous les utilisateurs
+
+Voir **[DEPLOY.md](./DEPLOY.md)** — en résumé :
+
+**Vercel** *ou* **Netlify** (les deux sont configurés) :
+
+1. Push le repo sur GitHub  
+2. Importe sur [vercel.com](https://vercel.com) **et/ou** [netlify.com](https://app.netlify.com)  
+3. Deploy → URL publique  
+4. Partage le lien  
+
+- Vercel : `vercel.json` + `api/`  
+- Netlify : `netlify.toml` + `netlify/functions/`  
 
 ## Features
 
-- Accueil avec stats saison + raccourcis HDF
-- Compétitions nationales (Élite, N2, N3) groupées
-- Ligues régionales (18) + poules + matchs + classements
-- Filtres Féminin / Masculin
-- Annuaire ~700 clubs (dept, pratiques, contact)
-- Favoris équipes / clubs / poules (localStorage)
-- Installable en PWA
+- Accueil stats + raccourcis HDF  
+- Compétitions nationales & 18 ligues régionales  
+- Filtres **À venir / En cours / Passés**  
+- Fiche détail match (sets, arbitres, compos live)  
+- Suivre une équipe + page équipe  
+- Annuaire ~700 clubs  
+- PWA installable  
