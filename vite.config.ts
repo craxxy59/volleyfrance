@@ -65,15 +65,16 @@ export default defineConfig({
     port: 5173,
     allowedHosts: true,
     proxy: {
+      // Used only by `npm run dev:vite`. Prefer `npm run dev` (server.mjs).
       '/ffvb-api': {
         target: 'https://volley-ball.vercel.app',
         changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/ffvb-api/, '/api'),
+        rewrite: (p) => p.replace(/^\/ffvb-api/, '/api'),
       },
       '/ffvolley-api': {
         target: 'https://api.my.ffvolley.org',
         changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/ffvolley-api/, ''),
+        rewrite: (p) => p.replace(/^\/ffvolley-api/, ''),
       },
     },
   },

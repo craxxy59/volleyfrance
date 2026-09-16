@@ -17,7 +17,17 @@ npm install
 npm run dev
 ```
 
-L’app écoute sur `0.0.0.0:5173` avec proxy CORS vers les APIs.
+L’app écoute sur `0.0.0.0:5173` via `server.mjs` (Vite + proxies same-origin) :
+
+- `/ffvb-api/*` → `https://volley-ball.vercel.app/api/*`
+- `/ffvolley-api/*` → `https://api.my.ffvolley.org/*`
+
+> Les APIs externes n’envoient pas de CORS ouverts : le proxy same-origin est **obligatoire**.
+
+```bash
+npm run build && npm start   # prod locale
+```
+
 
 ## Features
 

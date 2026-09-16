@@ -4,12 +4,16 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "node server.mjs",
+    "dev:vite": "vite --host 0.0.0.0 --port 5173",
     "build": "tsc -b && vite build",
+    "start": "NODE_ENV=production node server.mjs",
     "lint": "oxlint",
-    "preview": "vite preview"
+    "preview": "npm run build && NODE_ENV=production node server.mjs"
   },
   "dependencies": {
+    "express": "^5.2.1",
+    "http-proxy-middleware": "^3.0.7",
     "lucide-react": "^1.46.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
