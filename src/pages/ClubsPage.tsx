@@ -5,6 +5,8 @@ import { ClubCard } from '../components/ClubCard'
 import { SkeletonList, EmptyState, ErrorState } from '../components/Loading'
 import { clubSearchText, deptLabel, fetchClubs } from '../lib/api'
 import type { Club } from '../types'
+import { SeasonSelect } from '../components/SeasonSelect'
+import { useSeason } from '../hooks/useSeason'
 
 const PAGE = 40
 
@@ -16,6 +18,7 @@ export function ClubsPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [visible, setVisible] = useState(PAGE)
+  const { season } = useSeason()
 
   const load = async () => {
     setLoading(true)
@@ -69,6 +72,8 @@ export function ClubsPage() {
   return (
     <div className="page">
       <TopBar subtitle="Annuaire clubs FFVolley" />
+
+      <SeasonSelect variant="chips" />
 
       <div className="search-bar">
         <Search size={18} />
@@ -126,6 +131,7 @@ export function ClubsPage() {
       <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: 12 }}>
         {loading ? 'Chargement…' : `${filtered.length} club${filtered.length > 1 ? 's' : ''}`}
         {!loading && clubs.length > 0 && ` · ${clubs.length} au total`}
+        {!loading && ` · saison ${season} (équipes & matchs du club)`}
       </p>
 
       {error && <ErrorState message={error} onRetry={load} />}

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Star, ChevronRight, Trash2, Bell, BellRing } from 'lucide-react'
 import { TopBar } from '../components/TopBar'
+import { SeasonSelect } from '../components/SeasonSelect'
 import { getNotifPrefs } from '../lib/notifications'
 import { MatchCard } from '../components/MatchCard'
 import { StatusFilter } from '../components/StatusFilter'
@@ -80,6 +81,8 @@ export function FavoritesPage() {
   return (
     <div className="page">
       <TopBar subtitle="Équipes suivies · alertes perso" />
+
+      <SeasonSelect variant="chips" />
 
       <Link to="/notifications" className={`notif-cta card card-clickable${notifOn ? ' on' : ''}`}>
         <div className="notif-cta-icon">

@@ -2,23 +2,25 @@ import { Link } from 'react-router-dom'
 import { Bell } from 'lucide-react'
 import { getNotifPrefs } from '../lib/notifications'
 import { useEffect, useState } from 'react'
-import { currentSeasonFull, currentSeasonShort } from '../lib/season'
+import { SeasonSelect } from './SeasonSelect'
+import { useSeason } from '../hooks/useSeason'
 
 interface Props {
   subtitle?: string
   right?: React.ReactNode
-  /** Optional override, e.g. from API "2026/2027" */
+  /** Optional override display only (sélection réelle = useSeason) */
   season?: string | null
+  /** Afficher le sélecteur de saison (défaut true) */
+  showSeasonSelect?: boolean
 }
 
 export function TopBar({
   subtitle = 'Clubs · scores · équipes suivies',
   right,
-  season,
+  showSeasonSelect = true,
 }: Props) {
   const [notifOn, setNotifOn] = useState(() => getNotifPrefs().enabled)
-  const seasonFull = season || currentSeasonFull()
-  const seasonShort = currentSeasonShort(seasonFull)
+  const { season } = useSeason()
 
   useEffect(() => {
     const onPrefs = () => setNotifOn(getNotifPrefs().enabled)
@@ -62,9 +64,13 @@ export function TopBar({
           >
             <Bell size={16} />
           </Link>
-          <span className="season-chip" title={`Saison sportive ${seasonFull}`}>
-            {seasonShort}
-          </span>
+          {showSeasonSelect ? (
+            <SeasonSelect variant="compact" showLabel={false} />
+          ) : (
+            <span className="season-chip" title={`Saison sportive ${season}`}>
+              {season}
+            </span>
+          )}
         </div>
       )}
     </header>

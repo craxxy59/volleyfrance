@@ -199,6 +199,71 @@ img {
   letter-spacing: 0.02em;
 }
 
+.season-select-wrap {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.season-select-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.season-select {
+  max-width: 100%;
+}
+
+.season-chips {
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.season-chips-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--text-dim);
+  padding-right: 4px;
+  flex-shrink: 0;
+}
+
+.season-compact {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 5px 8px 5px 10px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.18), rgba(34, 211, 238, 0.08));
+  color: #93c5fd;
+  border: 1px solid rgba(59, 130, 246, 0.28);
+  cursor: pointer;
+  max-width: 42vw;
+}
+
+.season-compact select {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 700;
+  padding-right: 2px;
+  max-width: 28vw;
+  cursor: pointer;
+  outline: none;
+}
+
+.season-compact select option {
+  color: #0b101a;
+  background: #fff;
+}
+
 /* Home hero */
 .home-hero {
   position: relative;

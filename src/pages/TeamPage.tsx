@@ -12,6 +12,8 @@ import { teamFavId } from '../lib/favorites'
 import { useFavorites } from '../hooks/useFavorites'
 import { parseCompetitionMeta } from '../lib/teamMeta'
 import { filterMatchesForTeam } from '../lib/clubTeams'
+import { useSeason } from '../hooks/useSeason'
+import { SeasonSelect } from '../components/SeasonSelect'
 
 export function TeamPage() {
   const { name = '' } = useParams()
@@ -22,6 +24,7 @@ export function TeamPage() {
   const navigate = useNavigate()
   const { isFavorite } = useFavorites()
   const following = isFavorite(teamFavId(teamName))
+  const { season } = useSeason()
 
   const [matches, setMatches] = useState<Match[]>([])
   const [bucket, setBucket] = useState<MatchBucket>('all')
@@ -34,7 +37,7 @@ export function TeamPage() {
       setLoading(true)
       setError(null)
       try {
-        const list = await fetchTeamMatches(teamName, { limit: 80 })
+        const list = await fetchTeamMatches(teamName, { limit: 80, saison: season })
         // Enrich with dept matches if codent is departmental or unknown
         let extra: Match[] = []
         if (codentFilter && /^PT/i.test(codentFilter)) {
@@ -44,6 +47,7 @@ export function TeamPage() {
               q: teamName,
               full: true,
               limit: 50,
+              saison: season,
             })
             for (const e of entries) {
               if (e.team.toUpperCase() === teamName.toUpperCase()) {
@@ -72,7 +76,7 @@ export function TeamPage() {
     return () => {
       cancelled = true
     }
-  }, [teamName, codentFilter])
+  }, [teamName, codentFilter, season])
 
   const scopedMatches = useMemo(() => {
     if (!pouleFilter) return matches
@@ -151,12 +155,17 @@ export function TeamPage() {
         <button type="button" className="back-btn" onClick={() => navigate(-1)}>
           <ArrowLeft size={16} /> Retour
         </button>
-        {following && (
-          <span className="badge" style={{ background: 'var(--orange-soft)', color: 'var(--orange)' }}>
-            <Bell size={12} style={{ marginRight: 4 }} /> Suivie
-          </span>
-        )}
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <SeasonSelect variant="compact" showLabel={false} />
+          {following && (
+            <span className="badge" style={{ background: 'var(--orange-soft)', color: 'var(--orange)' }}>
+              <Bell size={12} style={{ marginRight: 4 }} /> Suivie
+            </span>
+          )}
+        </div>
       </div>
+
+      <SeasonSelect variant="chips" />
 
       <section className="team-hero">
         <div className="team-hero-mark">{teamName.slice(0, 2).toUpperCase()}</div>
@@ -180,11 +189,13 @@ export function TeamPage() {
             )}
           </div>
           <p>
+            Saison {season}
+            {' · '}
             {pouleFilter
-              ? `Compétition ${pouleFilter}`
+              ? `compétition ${pouleFilter}`
               : competitions.length > 1
                 ? `${competitions.length} compétitions détectées`
-                : 'Résultats nationaux, régionaux & départementaux'}
+                : 'résultats nationaux, régionaux & départementaux'}
           </p>
           <div className="team-hero-actions">
             <FollowButton

@@ -8,6 +8,9 @@ import { SkeletonList, EmptyState, ErrorState } from '../components/Loading'
 import { fetchLiveMatches, fetchNationalMatches, fetchMatches, sortMatchesChrono } from '../lib/api'
 import { matchBucket, type MatchBucket } from '../lib/matchStore'
 import type { LiveMatch, Match } from '../types'
+import { SeasonSelect } from '../components/SeasonSelect'
+import { useSeason } from '../hooks/useSeason'
+import { seasonFromDate } from '../lib/season'
 
 type Scope = 'national' | 'hdf' | 'livefeed'
 
@@ -20,6 +23,7 @@ export function ScoresPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [fetchedAt, setFetchedAt] = useState<string | null>(null)
+  const { season } = useSeason()
 
   const load = async () => {
     setLoading(true)
@@ -33,8 +37,8 @@ export function ScoresPage() {
         // Load both completed + scheduled then filter client-side for smooth tabs
         if (scope === 'national') {
           const [done, soon] = await Promise.all([
-            fetchNationalMatches({ status: 'completed', limit: 100 }),
-            fetchNationalMatches({ status: 'scheduled', limit: 80 }),
+            fetchNationalMatches({ status: 'completed', limit: 100, saison: season }),
+            fetchNationalMatches({ status: 'scheduled', limit: 80, saison: season }),
           ])
           const seen = new Set<string>()
           const all: Match[] = []
@@ -47,8 +51,8 @@ export function ScoresPage() {
           setMatches(all)
         } else {
           const [done, soon] = await Promise.all([
-            fetchMatches({ codent: 'LIFL', status: 'completed', limit: 100 }),
-            fetchMatches({ codent: 'LIFL', status: 'scheduled', limit: 80 }),
+            fetchMatches({ codent: 'LIFL', status: 'completed', limit: 100, saison: season }),
+            fetchMatches({ codent: 'LIFL', status: 'scheduled', limit: 80, saison: season }),
           ])
           const seen = new Set<string>()
           const all: Match[] = []
@@ -71,7 +75,7 @@ export function ScoresPage() {
   useEffect(() => {
     load()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [scope])
+  }, [scope, season])
 
   // Default bucket when switching scope
   useEffect(() => {
@@ -79,9 +83,19 @@ export function ScoresPage() {
     else setBucket('past')
   }, [scope])
 
+  const liveInSeason = useMemo(() => {
+    return live.filter((m) => {
+      if (!(m.local_team_name || m.visitor_team_name)) return false
+      const s = seasonFromDate(m.date) || (m as { season?: string }).season
+      // Live feed: keep if no date or same season
+      if (!s) return true
+      return s === season
+    })
+  }, [live, season])
+
   const liveFiltered = useMemo(() => {
     const query = q.trim().toLowerCase()
-    let list = live.filter((m) => m.local_team_name || m.visitor_team_name)
+    let list = [...liveInSeason]
     if (bucket !== 'all') list = list.filter((m) => matchBucket(m.status) === bucket)
     if (query) {
       list = list.filter((m) =>
@@ -98,17 +112,17 @@ export function ScoresPage() {
       return db - da
     })
     return list.slice(0, 80)
-  }, [live, q, bucket])
+  }, [liveInSeason, q, bucket])
 
   const liveCounts = useMemo(() => {
-    const base = live.filter((m) => m.local_team_name || m.visitor_team_name)
+    const base = liveInSeason
     const c: Partial<Record<MatchBucket, number>> = { all: base.length, live: 0, upcoming: 0, past: 0 }
     base.forEach((m) => {
       const b = matchBucket(m.status)
       c[b] = (c[b] || 0) + 1
     })
     return c
-  }, [live])
+  }, [liveInSeason])
 
   const matchCounts = useMemo(() => {
     const c: Partial<Record<MatchBucket, number>> = { all: matches.length, live: 0, upcoming: 0, past: 0 }
@@ -140,11 +154,16 @@ export function ScoresPage() {
       <TopBar
         subtitle="Scores · à venir · en cours · passés"
         right={
-          <button type="button" className="icon-btn" onClick={load} title="Rafraîchir" aria-label="Rafraîchir">
-            <RefreshCw size={16} />
-          </button>
+          <div className="topbar-right">
+            <button type="button" className="icon-btn" onClick={load} title="Rafraîchir" aria-label="Rafraîchir">
+              <RefreshCw size={16} />
+            </button>
+            <SeasonSelect variant="compact" showLabel={false} />
+          </div>
         }
       />
+
+      <SeasonSelect variant="chips" />
 
       <div className="chips">
         <button

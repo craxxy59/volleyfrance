@@ -8,9 +8,26 @@ import type {
   RankingRow,
   Stats,
 } from '../types'
+import { currentSeasonFull, filterBySeason, normalizeSeason } from './season'
 
 const FFVB = '/ffvb-api'
 const FFVOLLEY = '/ffvolley-api'
+
+/** Saison active pour les appels API (défaut = sélection utilisateur / calendrier). */
+function activeSeason(explicit?: string | null): string {
+  if (explicit) {
+    const n = normalizeSeason(explicit)
+    if (n) return n
+  }
+  try {
+    const raw = localStorage.getItem('vf-season')
+    const n = normalizeSeason(raw)
+    if (n) return n
+  } catch {
+    /* SSR / private mode */
+  }
+  return currentSeasonFull()
+}
 
 function sleep(ms: number) {
   return new Promise((r) => setTimeout(r, ms))
@@ -115,23 +132,40 @@ export function isDeptCodent(codent?: string | null): boolean {
   return /^PT/i.test(String(codent || ''))
 }
 
-export async function fetchNationalPoules(): Promise<Poule[]> {
-  const data = await getJson<{ poules: Poule[] }>(`${FFVB}/nationals/poules`)
-  return data.poules || []
+function filterPoulesBySeason(list: Poule[], season: string): Poule[] {
+  const withSeason = list.filter((p) => !!p.saison)
+  if (!withSeason.length) return list
+  const hit = list.filter((p) => !p.saison || normalizeSeason(p.saison) === season)
+  return hit
 }
 
-export async function fetchPoules(codent?: string): Promise<Poule[]> {
-  const data = await getJson<{ poules: Poule[] }>(`${FFVB}/poules${qs({ codent })}`)
-  return data.poules || []
+export async function fetchNationalPoules(saison?: string): Promise<Poule[]> {
+  const season = activeSeason(saison)
+  const data = await getJson<{ poules: Poule[] }>(
+    `${FFVB}/nationals/poules${qs({ saison: season })}`,
+  )
+  return filterPoulesBySeason(data.poules || [], season)
+}
+
+export async function fetchPoules(codent?: string, saison?: string): Promise<Poule[]> {
+  const season = activeSeason(saison)
+  const data = await getJson<{ poules: Poule[] }>(
+    `${FFVB}/poules${qs({ codent, saison: season })}`,
+  )
+  return filterPoulesBySeason(data.poules || [], season)
 }
 
 /** Classement départemental (scrape officiel) — fallback si rankings/:id indispo */
 export async function fetchDeptRankings(
   codent: string,
   pouleCode: string,
+  saison?: string,
 ): Promise<{ rankings: RankingRow[]; poule_name?: string; count: number }> {
   return getJson(
-    `${FFVB}/departments/${encodeURIComponent(codent)}/rankings${qs({ poule: pouleCode })}`,
+    `${FFVB}/departments/${encodeURIComponent(codent)}/rankings${qs({
+      poule: pouleCode,
+      saison: activeSeason(saison),
+    })}`,
   )
 }
 
@@ -179,8 +213,14 @@ export async function fetchNationalMatches(params: {
   team?: string
   limit?: number
   offset?: number
+  saison?: string
 }): Promise<{ matches: Match[]; total?: number; count: number }> {
-  return getJson(`${FFVB}/nationals/matches${qs(params)}`)
+  const season = activeSeason(params.saison)
+  const data = await getJson<{ matches: Match[]; total?: number; count: number }>(
+    `${FFVB}/nationals/matches${qs({ ...params, saison: season })}`,
+  )
+  const matches = filterBySeason(data.matches || [], season)
+  return { ...data, matches, count: matches.length }
 }
 
 export async function fetchMatches(params: {
@@ -190,8 +230,14 @@ export async function fetchMatches(params: {
   team?: string
   limit?: number
   offset?: number
+  saison?: string
 }): Promise<{ matches: Match[]; count: number; limit?: number }> {
-  return getJson(`${FFVB}/matches${qs(params)}`)
+  const season = activeSeason(params.saison)
+  const data = await getJson<{ matches: Match[]; count: number; limit?: number }>(
+    `${FFVB}/matches${qs({ ...params, saison: season })}`,
+  )
+  const matches = filterBySeason(data.matches || [], season)
+  return { ...data, matches, count: matches.length }
 }
 
 export async function fetchNationalRankings(pouleNumericId: number): Promise<{
@@ -210,19 +256,23 @@ export async function fetchRankings(pouleNumericId: number): Promise<{
   return getJson(`${FFVB}/rankings/${pouleNumericId}`)
 }
 
-export async function searchTeams(q: string): Promise<{ teams: string[]; poules: unknown[] }> {
-  return getJson(`${FFVB}/search${qs({ q })}`)
+export async function searchTeams(
+  q: string,
+  saison?: string,
+): Promise<{ teams: string[]; poules: unknown[] }> {
+  return getJson(`${FFVB}/search${qs({ q, saison: activeSeason(saison) })}`)
 }
 
 /** Fetch both national + regional results for a team name */
 export async function fetchTeamMatches(
   team: string,
-  opts?: { limit?: number },
+  opts?: { limit?: number; saison?: string },
 ): Promise<Match[]> {
   const limit = opts?.limit ?? 40
+  const saison = opts?.saison
   const [nat, reg] = await Promise.all([
-    fetchNationalMatches({ team, limit }).catch(() => ({ matches: [] as Match[] })),
-    fetchMatches({ team, limit }).catch(() => ({ matches: [] as Match[] })),
+    fetchNationalMatches({ team, limit, saison }).catch(() => ({ matches: [] as Match[] })),
+    fetchMatches({ team, limit, saison }).catch(() => ({ matches: [] as Match[] })),
   ])
   const seen = new Set<string>()
   const all: Match[] = []
@@ -232,7 +282,7 @@ export async function fetchTeamMatches(
       all.push(m)
     }
   })
-  return all
+  return filterBySeason(all, activeSeason(saison))
 }
 
 /* ─── FFVolley official API ─── */

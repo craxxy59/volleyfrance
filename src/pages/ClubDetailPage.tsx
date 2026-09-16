@@ -29,12 +29,15 @@ import { matchBucket, type MatchBucket } from '../lib/matchStore'
 import type { Club, Match } from '../types'
 import { clubFavId } from '../lib/favorites'
 import { useFavorites } from '../hooks/useFavorites'
+import { useSeason } from '../hooks/useSeason'
+import { SeasonSelect } from '../components/SeasonSelect'
 
 type Tab = 'equipes' | 'matchs' | 'contact'
 
 export function ClubDetailPage() {
   const { id } = useParams()
   const { isFavorite, toggleFavorite } = useFavorites()
+  const { season } = useSeason()
 
   const [club, setClub] = useState<Club | null>(null)
   const [teams, setTeams] = useState<ClubTeamInfo[]>([])
@@ -64,7 +67,7 @@ export function ClubDetailPage() {
           setMatches([])
           return
         }
-        const discovered = await discoverClubTeams(found)
+        const discovered = await discoverClubTeams(found, { saison: season })
         if (cancelled) return
         setTeams(discovered.teams)
         setMatches(filterMatchesForClub(discovered.matches, found.name))
@@ -78,7 +81,7 @@ export function ClubDetailPage() {
     return () => {
       cancelled = true
     }
-  }, [id])
+  }, [id, season])
 
   const fav = club ? isFavorite(clubFavId(club.id_club)) : false
   const phone = club?.telport || club?.telfixe
@@ -177,22 +180,27 @@ export function ClubDetailPage() {
         <Link to="/clubs" className="back-btn">
           <ArrowLeft size={16} /> Clubs
         </Link>
-        <button
-          type="button"
-          className={`icon-btn${fav ? ' active' : ''}`}
-          aria-label="Favori club"
-          onClick={() =>
-            toggleFavorite({
-              id: clubFavId(club.id_club),
-              kind: 'club',
-              label: club.name,
-              meta: club.ville || club.cpostal || deptLabel(club.id_dept),
-            })
-          }
-        >
-          <Star size={16} fill={fav ? 'currentColor' : 'none'} />
-        </button>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <SeasonSelect variant="compact" showLabel={false} />
+          <button
+            type="button"
+            className={`icon-btn${fav ? ' active' : ''}`}
+            aria-label="Favori club"
+            onClick={() =>
+              toggleFavorite({
+                id: clubFavId(club.id_club),
+                kind: 'club',
+                label: club.name,
+                meta: club.ville || club.cpostal || deptLabel(club.id_dept),
+              })
+            }
+          >
+            <Star size={16} fill={fav ? 'currentColor' : 'none'} />
+          </button>
+        </div>
       </div>
+
+      <SeasonSelect variant="chips" />
 
       <section className="club-hero">
         <div className="club-hero-glow" aria-hidden />
@@ -234,6 +242,9 @@ export function ClubDetailPage() {
             <span>à venir</span>
           </div>
         </div>
+        <p className="club-hero-core" style={{ marginTop: 10 }}>
+          Saison {season}
+        </p>
       </section>
 
       <div className="club-tabs" role="tablist">

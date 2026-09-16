@@ -25,6 +25,8 @@ import type { Department, Entity, Gender, Match, Poule, RankingRow } from '../ty
 import { pouleFavId } from '../lib/favorites'
 import { matchBucket, type MatchBucket } from '../lib/matchStore'
 import { useFavorites } from '../hooks/useFavorites'
+import { useSeason } from '../hooks/useSeason'
+import { SeasonSelect } from '../components/SeasonSelect'
 import { currentSeasonFull } from '../lib/season'
 
 type Level = 'national' | 'regional' | 'departemental'
@@ -34,6 +36,14 @@ export function CompetitionsPage() {
   const [params, setParams] = useSearchParams()
   const navigate = useNavigate()
   const { isFavorite, toggleFavorite } = useFavorites()
+  const { season, setSeason } = useSeason()
+
+  // URL ?saison= override → global season
+  useEffect(() => {
+    const s = params.get('saison')
+    if (s && s !== season) setSeason(s)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [params])
 
   const level = (params.get('level') as Level) || 'national'
   const codent = params.get('codent') || ''
@@ -97,7 +107,7 @@ export function CompetitionsPage() {
       setDataSource(null)
       try {
         if (level === 'national') {
-          const list = await fetchNationalPoules()
+          const list = await fetchNationalPoules(season)
           if (!cancelled) {
             setPoules(list)
             setDataSource('api-nationale')
@@ -106,7 +116,7 @@ export function CompetitionsPage() {
           if (!codent || !isDeptCodent(codent)) {
             if (!cancelled) setPoules([])
           } else {
-            const list = await fetchPoules(codent)
+            const list = await fetchPoules(codent, season)
             if (!cancelled) {
               setPoules(list)
               setDataSource('ffvbbeach-dept')
@@ -118,7 +128,7 @@ export function CompetitionsPage() {
           if (!c) {
             if (!cancelled) setPoules([])
           } else {
-            const list = await fetchPoules(c)
+            const list = await fetchPoules(c, season)
             if (!cancelled) {
               setPoules(list)
               setDataSource('api-regionale')
@@ -135,7 +145,7 @@ export function CompetitionsPage() {
     return () => {
       cancelled = true
     }
-  }, [level, codent, ligue])
+  }, [level, codent, ligue, season])
 
   const filteredPoules = useMemo(() => {
     return poules.filter((p) => {
@@ -183,8 +193,18 @@ export function CompetitionsPage() {
         if (view === 'matchs') {
           if (level === 'national') {
             const [done, soon] = await Promise.all([
-              fetchNationalMatches({ poule: pouleCode, status: 'completed', limit: 200 }),
-              fetchNationalMatches({ poule: pouleCode, status: 'scheduled', limit: 100 }),
+              fetchNationalMatches({
+                poule: pouleCode,
+                status: 'completed',
+                limit: 200,
+                saison: season,
+              }),
+              fetchNationalMatches({
+                poule: pouleCode,
+                status: 'scheduled',
+                limit: 100,
+                saison: season,
+              }),
             ])
             const seen = new Set<string>()
             const all = [] as typeof done.matches
@@ -198,8 +218,20 @@ export function CompetitionsPage() {
           } else {
             const c = effectiveCodent
             const [done, soon] = await Promise.all([
-              fetchMatches({ codent: c, poule: pouleCode, status: 'completed', limit: 200 }),
-              fetchMatches({ codent: c, poule: pouleCode, status: 'scheduled', limit: 100 }),
+              fetchMatches({
+                codent: c,
+                poule: pouleCode,
+                status: 'completed',
+                limit: 200,
+                saison: season,
+              }),
+              fetchMatches({
+                codent: c,
+                poule: pouleCode,
+                status: 'scheduled',
+                limit: 100,
+                saison: season,
+              }),
             ])
             const seen = new Set<string>()
             const all = [] as typeof done.matches
@@ -213,7 +245,7 @@ export function CompetitionsPage() {
           }
         } else if (view === 'classement' && selectedPoule) {
           if (level === 'departemental' || isDeptCodent(effectiveCodent)) {
-            const data = await fetchDeptRankings(effectiveCodent, pouleCode)
+            const data = await fetchDeptRankings(effectiveCodent, pouleCode, season)
             if (!cancelled) {
               setRankings(data.rankings || [])
               setPouleName(data.poule_name || selectedPoule.poule_name)
@@ -242,7 +274,7 @@ export function CompetitionsPage() {
     return () => {
       cancelled = true
     }
-  }, [pouleCode, view, level, effectiveCodent, selectedPoule])
+  }, [pouleCode, view, level, effectiveCodent, selectedPoule, season])
 
   const favId = selectedPoule
     ? pouleFavId(
@@ -255,7 +287,7 @@ export function CompetitionsPage() {
 
   const officialDeptUrl =
     level === 'departemental' && codent
-      ? `https://www.ffvbbeach.org/ffvbapp/resu/vbspo_home.php?saison=${encodeURIComponent(currentSeasonFull())}&codent=${encodeURIComponent(codent)}`
+      ? `https://www.ffvbbeach.org/ffvbapp/resu/vbspo_home.php?saison=${encodeURIComponent(season)}&codent=${encodeURIComponent(codent)}`
       : null
 
   const scopeLabel =
@@ -270,6 +302,8 @@ export function CompetitionsPage() {
   return (
     <div className="page">
       <TopBar subtitle="Compétitions · poules · classements" />
+
+      <SeasonSelect variant="chips" />
 
       <div className="chips">
         <button
@@ -422,7 +456,7 @@ export function CompetitionsPage() {
             lineHeight: 1.4,
           }}
         >
-          Source : site officiel FFVB (ffvbbeach.org) · saison {currentSeasonFull()}
+          Source : site officiel FFVB (ffvbbeach.org) · saison {season}
           {officialDeptUrl && (
             <>
               {' · '}
@@ -436,6 +470,22 @@ export function CompetitionsPage() {
               </a>
             </>
           )}
+        </p>
+      )}
+
+      {level !== 'departemental' && poules.length === 0 && !loading && (codent || level === 'national') && (
+        <p
+          style={{
+            fontSize: '0.75rem',
+            color: 'var(--text-muted)',
+            margin: '0 0 10px',
+            lineHeight: 1.45,
+          }}
+        >
+          Aucune poule pour la saison <strong>{season}</strong> dans cette source.
+          {season !== currentSeasonFull()
+            ? ' L’agrégat national/régional peut encore être sur 2025/2026 — bascule de saison ou ouvre l’onglet Départemental.'
+            : ' Les données départementales (onglet Dépt.) suivent mieux la saison en cours.'}
         </p>
       )}
 
@@ -463,7 +513,7 @@ export function CompetitionsPage() {
                 {(selectedPoule.label || selectedPoule.poule_name).replace(/^[A-Z0-9]+ - /, '')}
               </h1>
               <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginTop: 4 }}>
-                {selectedPoule.saison || currentSeasonFull()}
+                {selectedPoule.saison || season}
                 {' · '}
                 {scopeLabel}
               </p>

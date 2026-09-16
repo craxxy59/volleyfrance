@@ -16,6 +16,8 @@ import type { Match, Stats } from '../types'
 import { useFavorites } from '../hooks/useFavorites'
 import { matchBucket } from '../lib/matchStore'
 import { resolveSeasonLabel } from '../lib/season'
+import { useSeason } from '../hooks/useSeason'
+import { SeasonSelect } from '../components/SeasonSelect'
 
 export function HomePage() {
   const [stats, setStats] = useState<Stats | null>(null)
@@ -27,6 +29,7 @@ export function HomePage() {
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const { favorites } = useFavorites()
+  const { season } = useSeason()
   const teamFavs = favorites.filter((f) => f.kind === 'team')
 
   const load = async () => {
@@ -37,9 +40,9 @@ export function HomePage() {
       const results = await Promise.allSettled([
         fetchGlobalStats(),
         fetchNationalStats(),
-        fetchNationalMatches({ status: 'completed', limit: 8 }),
-        fetchNationalMatches({ status: 'scheduled', limit: 8 }),
-        fetchMatches({ codent: 'LIFL', limit: 6 }),
+        fetchNationalMatches({ status: 'completed', limit: 8, saison: season }),
+        fetchNationalMatches({ status: 'scheduled', limit: 8, saison: season }),
+        fetchMatches({ codent: 'LIFL', limit: 6, saison: season }),
         fetchClubs(),
       ])
 
@@ -82,13 +85,16 @@ export function HomePage() {
 
   useEffect(() => {
     load()
-  }, [])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [season])
 
-  const seasonLabel = resolveSeasonLabel(stats)
+  const seasonLabel = season || resolveSeasonLabel(stats)
 
   return (
     <div className="page">
       <TopBar season={seasonLabel} />
+
+      <SeasonSelect variant="chips" />
 
       {error && <ErrorState message={error} onRetry={load} />}
 

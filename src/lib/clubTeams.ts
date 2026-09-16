@@ -311,11 +311,15 @@ function addMatchToTeams(map: Map<string, ClubTeamInfo>, m: Match, clubName: str
  * Discover competition teams linked to a club via FFVB search + match feeds + départemental.
  * Une « équipe » = un couple (nom FFVB, poule) → catégorie + genre visibles.
  */
-export async function discoverClubTeams(club: Club): Promise<{
+export async function discoverClubTeams(
+  club: Club,
+  opts?: { saison?: string },
+): Promise<{
   teams: ClubTeamInfo[]
   matches: Match[]
   queries: string[]
 }> {
+  const saison = opts?.saison
   const core = clubCoreLabel(club.name)
   const tokens = clubSignificantTokens(club.name)
   const queries = new Set<string>()
@@ -353,7 +357,7 @@ export async function discoverClubTeams(club: Club): Promise<{
   await Promise.all(
     cleanQueries.slice(0, 6).map(async (q) => {
       try {
-        const res = await searchTeams(q)
+        const res = await searchTeams(q, saison)
         ;(res.teams || []).forEach((t) => {
           if (teamBelongsToClub(t, club.name)) teamNames.add(t)
         })
@@ -383,10 +387,10 @@ export async function discoverClubTeams(club: Club): Promise<{
     teamsForFetch.slice(0, 18).map(async (team) => {
       try {
         const [nat, reg] = await Promise.all([
-          fetchNationalMatches({ team, limit: 50 }).catch(() => ({
+          fetchNationalMatches({ team, limit: 50, saison }).catch(() => ({
             matches: [] as Match[],
           })),
-          fetchMatches({ team, limit: 80 }).catch(() => ({
+          fetchMatches({ team, limit: 80, saison }).catch(() => ({
             matches: [] as Match[],
           })),
         ])
@@ -412,6 +416,7 @@ export async function discoverClubTeams(club: Club): Promise<{
       q: core || clubSignificantTokens(club.name).slice(0, 2).join(' '),
       limit: 300,
       full: true,
+      saison,
     })
     for (const entry of deptEntries) {
       if (!teamBelongsToClub(entry.team, club.name)) continue
