@@ -155,8 +155,18 @@ export function FavoritesPage() {
               {poules.map((f) => (
                 <Link
                   key={f.id}
-                  to={`/competitions?level=${f.national ? 'national' : 'regional'}${
-                    f.codent && !f.national ? `&codent=${f.codent}` : ''
+                  to={`/competitions?level=${
+                    f.national
+                      ? 'national'
+                      : f.codent && /^PT/i.test(f.codent)
+                        ? 'departemental'
+                        : 'regional'
+                  }${
+                    f.codent && !f.national
+                      ? `&codent=${f.codent}${
+                          f.codent && /^PT/i.test(f.codent) ? '' : `&ligue=${f.codent}`
+                        }`
+                      : ''
                   }${f.pouleCode ? `&poule=${f.pouleCode}&view=classement` : ''}`}
                   className="card card-clickable fav-list-item"
                 >

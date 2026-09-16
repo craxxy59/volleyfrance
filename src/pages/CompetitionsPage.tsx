@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { ChevronRight, Star } from 'lucide-react'
+import { ChevronRight, ExternalLink, Star } from 'lucide-react'
 import { TopBar } from '../components/TopBar'
 import { MatchCard } from '../components/MatchCard'
 import { RankingTable } from '../components/RankingTable'
@@ -8,6 +8,8 @@ import { SkeletonList, EmptyState, ErrorState } from '../components/Loading'
 import { StatusFilter } from '../components/StatusFilter'
 import {
   detectGender,
+  fetchDepartments,
+  fetchDeptRankings,
   fetchEntities,
   fetchMatches,
   fetchNationalMatches,
@@ -15,15 +17,17 @@ import {
   fetchNationalRankings,
   fetchPoules,
   fetchRankings,
+  isDeptCodent,
   nationalGroup,
   sortMatchesChrono,
 } from '../lib/api'
-import type { Entity, Gender, Match, Poule, RankingRow } from '../types'
+import type { Department, Entity, Gender, Match, Poule, RankingRow } from '../types'
 import { pouleFavId } from '../lib/favorites'
 import { matchBucket, type MatchBucket } from '../lib/matchStore'
 import { useFavorites } from '../hooks/useFavorites'
+import { currentSeasonFull } from '../lib/season'
 
-type Level = 'national' | 'regional'
+type Level = 'national' | 'regional' | 'departemental'
 type View = 'poules' | 'matchs' | 'classement'
 
 export function CompetitionsPage() {
@@ -33,11 +37,13 @@ export function CompetitionsPage() {
 
   const level = (params.get('level') as Level) || 'national'
   const codent = params.get('codent') || ''
+  const ligue = params.get('ligue') || ''
   const pouleCode = params.get('poule') || ''
   const gender = (params.get('gender') as Gender) || 'all'
   const view = (params.get('view') as View) || 'poules'
 
   const [entities, setEntities] = useState<Entity[]>([])
+  const [departments, setDepartments] = useState<Department[]>([])
   const [poules, setPoules] = useState<Poule[]>([])
   const [matches, setMatches] = useState<Match[]>([])
   const [rankings, setRankings] = useState<RankingRow[]>([])
@@ -46,6 +52,7 @@ export function CompetitionsPage() {
   const [loadingDetail, setLoadingDetail] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [matchBucketFilter, setMatchBucketFilter] = useState<MatchBucket>('all')
+  const [dataSource, setDataSource] = useState<string | null>(null)
 
   const setQuery = (patch: Record<string, string | null>) => {
     const next = new URLSearchParams(params)
@@ -56,12 +63,30 @@ export function CompetitionsPage() {
     setParams(next, { replace: true })
   }
 
-  // Load entities once
+  // Load entities + departments once
   useEffect(() => {
     fetchEntities()
       .then(setEntities)
       .catch(() => setEntities([]))
+    fetchDepartments()
+      .then(setDepartments)
+      .catch(() => setDepartments([]))
   }, [])
+
+  const deptsForLigue = useMemo(() => {
+    if (!ligue) return departments
+    return departments.filter((d) => d.ligueCodent === ligue)
+  }, [departments, ligue])
+
+  const selectedDept = useMemo(
+    () => departments.find((d) => d.codent === codent),
+    [departments, codent],
+  )
+
+  const selectedLigue = useMemo(
+    () => entities.find((e) => e.codent === (ligue || (!isDeptCodent(codent) ? codent : ''))),
+    [entities, ligue, codent],
+  )
 
   // Load poules when level/codent changes
   useEffect(() => {
@@ -69,14 +94,37 @@ export function CompetitionsPage() {
     const run = async () => {
       setLoading(true)
       setError(null)
+      setDataSource(null)
       try {
-        const list =
-          level === 'national'
-            ? await fetchNationalPoules()
-            : codent
-              ? await fetchPoules(codent)
-              : []
-        if (!cancelled) setPoules(list)
+        if (level === 'national') {
+          const list = await fetchNationalPoules()
+          if (!cancelled) {
+            setPoules(list)
+            setDataSource('api-nationale')
+          }
+        } else if (level === 'departemental') {
+          if (!codent || !isDeptCodent(codent)) {
+            if (!cancelled) setPoules([])
+          } else {
+            const list = await fetchPoules(codent)
+            if (!cancelled) {
+              setPoules(list)
+              setDataSource('ffvbbeach-dept')
+            }
+          }
+        } else {
+          // regional
+          const c = codent && !isDeptCodent(codent) ? codent : ligue
+          if (!c) {
+            if (!cancelled) setPoules([])
+          } else {
+            const list = await fetchPoules(c)
+            if (!cancelled) {
+              setPoules(list)
+              setDataSource('api-regionale')
+            }
+          }
+        }
       } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : 'Erreur poules')
       } finally {
@@ -87,7 +135,7 @@ export function CompetitionsPage() {
     return () => {
       cancelled = true
     }
-  }, [level, codent])
+  }, [level, codent, ligue])
 
   const filteredPoules = useMemo(() => {
     return poules.filter((p) => {
@@ -112,6 +160,15 @@ export function CompetitionsPage() {
     [poules, pouleCode],
   )
 
+  const effectiveCodent =
+    level === 'departemental'
+      ? codent
+      : level === 'regional'
+        ? codent && !isDeptCodent(codent)
+          ? codent
+          : ligue
+        : 'ABCCS'
+
   // Load matches / rankings when poule or view changes
   useEffect(() => {
     if (!pouleCode || view === 'poules') {
@@ -132,29 +189,47 @@ export function CompetitionsPage() {
             const seen = new Set<string>()
             const all = [] as typeof done.matches
             ;[...(done.matches || []), ...(soon.matches || [])].forEach((m) => {
-              if (!seen.has(m.match_id)) { seen.add(m.match_id); all.push(m) }
+              if (!seen.has(m.match_id)) {
+                seen.add(m.match_id)
+                all.push(m)
+              }
             })
             if (!cancelled) setMatches(all)
           } else {
+            const c = effectiveCodent
             const [done, soon] = await Promise.all([
-              fetchMatches({ codent, poule: pouleCode, status: 'completed', limit: 200 }),
-              fetchMatches({ codent, poule: pouleCode, status: 'scheduled', limit: 100 }),
+              fetchMatches({ codent: c, poule: pouleCode, status: 'completed', limit: 200 }),
+              fetchMatches({ codent: c, poule: pouleCode, status: 'scheduled', limit: 100 }),
             ])
             const seen = new Set<string>()
             const all = [] as typeof done.matches
             ;[...(done.matches || []), ...(soon.matches || [])].forEach((m) => {
-              if (!seen.has(m.match_id)) { seen.add(m.match_id); all.push(m) }
+              if (!seen.has(m.match_id)) {
+                seen.add(m.match_id)
+                all.push(m)
+              }
             })
             if (!cancelled) setMatches(all)
           }
         } else if (view === 'classement' && selectedPoule) {
-          const data =
-            level === 'national'
-              ? await fetchNationalRankings(selectedPoule.id)
-              : await fetchRankings(selectedPoule.id)
-          if (!cancelled) {
-            setRankings(data.rankings || [])
-            setPouleName(data.poule_name || selectedPoule.poule_name)
+          if (level === 'departemental' || isDeptCodent(effectiveCodent)) {
+            const data = await fetchDeptRankings(effectiveCodent, pouleCode)
+            if (!cancelled) {
+              setRankings(data.rankings || [])
+              setPouleName(data.poule_name || selectedPoule.poule_name)
+            }
+          } else if (level === 'national') {
+            const data = await fetchNationalRankings(selectedPoule.id)
+            if (!cancelled) {
+              setRankings(data.rankings || [])
+              setPouleName(data.poule_name || selectedPoule.poule_name)
+            }
+          } else {
+            const data = await fetchRankings(selectedPoule.id)
+            if (!cancelled) {
+              setRankings(data.rankings || [])
+              setPouleName(data.poule_name || selectedPoule.poule_name)
+            }
           }
         }
       } catch (e) {
@@ -167,12 +242,30 @@ export function CompetitionsPage() {
     return () => {
       cancelled = true
     }
-  }, [pouleCode, view, level, codent, selectedPoule])
+  }, [pouleCode, view, level, effectiveCodent, selectedPoule])
 
   const favId = selectedPoule
-    ? pouleFavId(selectedPoule.codent || (level === 'national' ? 'ABCCS' : codent), selectedPoule.poule_id)
+    ? pouleFavId(
+        selectedPoule.codent ||
+          (level === 'national' ? 'ABCCS' : effectiveCodent || codent),
+        selectedPoule.poule_id,
+      )
     : ''
   const favActive = favId ? isFavorite(favId) : false
+
+  const officialDeptUrl =
+    level === 'departemental' && codent
+      ? `https://www.ffvbbeach.org/ffvbapp/resu/vbspo_home.php?saison=${encodeURIComponent(currentSeasonFull())}&codent=${encodeURIComponent(codent)}`
+      : null
+
+  const scopeLabel =
+    level === 'national'
+      ? 'National'
+      : level === 'departemental'
+        ? selectedDept
+          ? `${selectedDept.dept} — ${selectedDept.name}`
+          : codent || 'Département'
+        : selectedLigue?.name || codent || ligue || 'Ligue'
 
   return (
     <div className="page">
@@ -183,7 +276,13 @@ export function CompetitionsPage() {
           type="button"
           className={`chip${level === 'national' ? ' active' : ''}`}
           onClick={() =>
-            setQuery({ level: 'national', codent: null, poule: null, view: 'poules' })
+            setQuery({
+              level: 'national',
+              codent: null,
+              ligue: null,
+              poule: null,
+              view: 'poules',
+            })
           }
         >
           National
@@ -194,13 +293,29 @@ export function CompetitionsPage() {
           onClick={() =>
             setQuery({
               level: 'regional',
-              codent: codent || 'LIFL',
+              ligue: ligue || (!isDeptCodent(codent) ? codent : '') || 'LIFL',
+              codent: ligue || (!isDeptCodent(codent) ? codent : '') || 'LIFL',
               poule: null,
               view: 'poules',
             })
           }
         >
-          Régional / Départ.
+          Régional
+        </button>
+        <button
+          type="button"
+          className={`chip${level === 'departemental' ? ' active' : ''}`}
+          onClick={() =>
+            setQuery({
+              level: 'departemental',
+              ligue: ligue || 'LIFL',
+              codent: isDeptCodent(codent) ? codent : 'PTFL59',
+              poule: null,
+              view: 'poules',
+            })
+          }
+        >
+          Départemental
         </button>
       </div>
 
@@ -227,10 +342,16 @@ export function CompetitionsPage() {
         <div className="filters-row">
           <select
             className="filter-select"
-            value={codent}
+            value={codent && !isDeptCodent(codent) ? codent : ligue}
             onChange={(e) =>
-              setQuery({ codent: e.target.value, poule: null, view: 'poules' })
+              setQuery({
+                ligue: e.target.value,
+                codent: e.target.value,
+                poule: null,
+                view: 'poules',
+              })
             }
+            aria-label="Ligue régionale"
           >
             <option value="">— Choisir une ligue —</option>
             {entities.map((en) => (
@@ -240,6 +361,82 @@ export function CompetitionsPage() {
             ))}
           </select>
         </div>
+      )}
+
+      {level === 'departemental' && (
+        <div className="filters-row" style={{ flexWrap: 'wrap', gap: 8 }}>
+          <select
+            className="filter-select"
+            value={ligue || selectedDept?.ligueCodent || ''}
+            onChange={(e) => {
+              const nextLigue = e.target.value
+              const first = departments.find((d) => d.ligueCodent === nextLigue)
+              setQuery({
+                ligue: nextLigue,
+                codent: first?.codent || null,
+                poule: null,
+                view: 'poules',
+              })
+            }}
+            aria-label="Ligue (filtre départements)"
+          >
+            <option value="">— Toutes les ligues —</option>
+            {entities.map((en) => (
+              <option key={en.codent} value={en.codent}>
+                {en.name}
+              </option>
+            ))}
+          </select>
+          <select
+            className="filter-select"
+            value={codent}
+            onChange={(e) =>
+              setQuery({
+                codent: e.target.value,
+                ligue:
+                  departments.find((d) => d.codent === e.target.value)?.ligueCodent ||
+                  ligue ||
+                  null,
+                poule: null,
+                view: 'poules',
+              })
+            }
+            aria-label="Département"
+          >
+            <option value="">— Choisir un département —</option>
+            {deptsForLigue.map((d) => (
+              <option key={d.codent} value={d.codent}>
+                {d.dept} — {d.name}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+
+      {level === 'departemental' && dataSource === 'ffvbbeach-dept' && (
+        <p
+          style={{
+            fontSize: '0.72rem',
+            color: 'var(--text-dim)',
+            margin: '4px 0 10px',
+            lineHeight: 1.4,
+          }}
+        >
+          Source : site officiel FFVB (ffvbbeach.org) · saison {currentSeasonFull()}
+          {officialDeptUrl && (
+            <>
+              {' · '}
+              <a
+                href={officialDeptUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ color: 'var(--accent)', textDecoration: 'none' }}
+              >
+                comparer sur ffvb <ExternalLink size={11} style={{ verticalAlign: '-1px' }} />
+              </a>
+            </>
+          )}
+        </p>
       )}
 
       {error && <ErrorState message={error} />}
@@ -254,20 +451,21 @@ export function CompetitionsPage() {
           >
             ← Retour aux poules
           </button>
-          <div className="detail-header" style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+          <div
+            className="detail-header"
+            style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}
+          >
             <div style={{ flex: 1 }}>
               <div className="poule-code" style={{ display: 'inline-block', marginBottom: 8 }}>
                 {selectedPoule.poule_id}
               </div>
               <h1 style={{ fontSize: '1.1rem' }}>
-                {(selectedPoule.label || selectedPoule.poule_name).replace(
-                  /^[A-Z0-9]+ - /,
-                  '',
-                )}
+                {(selectedPoule.label || selectedPoule.poule_name).replace(/^[A-Z0-9]+ - /, '')}
               </h1>
               <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginTop: 4 }}>
-                {selectedPoule.saison}
-                {level === 'national' ? ' · National' : ` · ${entities.find((e) => e.codent === codent)?.name || codent}`}
+                {selectedPoule.saison || currentSeasonFull()}
+                {' · '}
+                {scopeLabel}
               </p>
             </div>
             <button
@@ -278,10 +476,18 @@ export function CompetitionsPage() {
                   id: favId,
                   kind: 'poule',
                   label: selectedPoule.label || selectedPoule.poule_name,
-                  meta: level === 'national' ? 'National' : codent,
+                  meta:
+                    level === 'national'
+                      ? 'National'
+                      : level === 'departemental'
+                        ? scopeLabel
+                        : effectiveCodent,
                   pouleNumericId: selectedPoule.id,
                   pouleCode: selectedPoule.poule_id,
-                  codent: selectedPoule.codent || codent || 'ABCCS',
+                  codent:
+                    selectedPoule.codent ||
+                    effectiveCodent ||
+                    (level === 'national' ? 'ABCCS' : codent),
                   national: level === 'national',
                 })
               }
@@ -322,19 +528,21 @@ export function CompetitionsPage() {
               />
               {loadingDetail ? (
                 <SkeletonList count={4} />
-              ) : (() => {
-                const list = sortMatchesChrono(
-                  matchBucketFilter === 'all'
-                    ? matches
-                    : matches.filter((m) => matchBucket(m.status) === matchBucketFilter),
-                  matchBucketFilter === 'upcoming' ? 'asc' : 'desc',
-                )
-                return list.length ? (
-                  list.map((m) => <MatchCard key={m.match_id} match={m} showPoule={false} />)
-                ) : (
-                  <EmptyState title="Aucun match" subtitle="Pas de rencontre pour ce filtre." />
-                )
-              })()}
+              ) : (
+                (() => {
+                  const list = sortMatchesChrono(
+                    matchBucketFilter === 'all'
+                      ? matches
+                      : matches.filter((m) => matchBucket(m.status) === matchBucketFilter),
+                    matchBucketFilter === 'upcoming' ? 'asc' : 'desc',
+                  )
+                  return list.length ? (
+                    list.map((m) => <MatchCard key={m.match_id} match={m} showPoule={false} />)
+                  ) : (
+                    <EmptyState title="Aucun match" subtitle="Pas de rencontre pour ce filtre." />
+                  )
+                })()
+              )}
             </>
           )}
 
@@ -345,7 +553,13 @@ export function CompetitionsPage() {
               ) : (
                 <>
                   {pouleName && (
-                    <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: 10 }}>
+                    <p
+                      style={{
+                        fontSize: '0.78rem',
+                        color: 'var(--text-muted)',
+                        marginBottom: 10,
+                      }}
+                    >
                       {pouleName}
                     </p>
                   )}
@@ -362,13 +576,21 @@ export function CompetitionsPage() {
         <>
           {loading ? (
             <SkeletonList count={6} />
-          ) : level === 'regional' && !codent ? (
+          ) : level === 'regional' && !(codent || ligue) ? (
             <EmptyState
               title="Choisis une ligue"
-              subtitle="Sélectionne ta région pour afficher les poules départementales et régionales."
+              subtitle="Sélectionne ta région pour afficher les poules régionales."
+            />
+          ) : level === 'departemental' && !codent ? (
+            <EmptyState
+              title="Choisis un département"
+              subtitle="Filtre par ligue puis par département pour comparer avec le site officiel FFVB."
             />
           ) : filteredPoules.length === 0 ? (
-            <EmptyState title="Aucune poule" subtitle="Essaie un autre filtre genre / ligue." />
+            <EmptyState
+              title="Aucune poule"
+              subtitle="Essaie un autre filtre genre / ligue / département."
+            />
           ) : level === 'national' && groupedNational ? (
             Object.entries(groupedNational).map(([group, list]) => (
               <div key={group}>
@@ -392,9 +614,30 @@ export function CompetitionsPage() {
             ))
           )}
 
-          {level === 'regional' && codent === 'LIFL' && (
-            <p style={{ fontSize: '0.75rem', color: 'var(--text-dim)', marginTop: 12, textAlign: 'center' }}>
-              Astuce : tu es en Hauts-de-France — filtre F/M pour aller plus vite.
+          {level === 'regional' && (codent === 'LIFL' || ligue === 'LIFL') && (
+            <p
+              style={{
+                fontSize: '0.75rem',
+                color: 'var(--text-dim)',
+                marginTop: 12,
+                textAlign: 'center',
+              }}
+            >
+              Astuce : pour le Nord / Pas-de-Calais / etc., passe sur l’onglet{' '}
+              <strong>Départemental</strong>.
+            </p>
+          )}
+
+          {level === 'departemental' && codent === 'PTFL59' && (
+            <p
+              style={{
+                fontSize: '0.75rem',
+                color: 'var(--text-dim)',
+                marginTop: 12,
+                textAlign: 'center',
+              }}
+            >
+              Comité Nord (59) — mêmes poules que sur le site officiel FFVB.
             </p>
           )}
         </>
@@ -418,14 +661,22 @@ function PouleRow({ poule, onOpen }: { poule: Poule; onOpen: () => void }) {
   const g = detectGender(poule.poule_name || poule.label || '')
   const title = (poule.label || poule.poule_name || '').replace(/^[A-Z0-9]+ - /, '')
   return (
-    <button type="button" className="card card-clickable poule-item" onClick={onOpen} style={{ width: '100%', textAlign: 'left' }}>
+    <button
+      type="button"
+      className="card card-clickable poule-item"
+      onClick={onOpen}
+      style={{ width: '100%', textAlign: 'left' }}
+    >
       <div className="poule-code">{poule.poule_id}</div>
       <div className="poule-info">
         <h3>{title}</h3>
         <p>
           {poule.saison}
           {g && (
-            <span className={`badge ${g === 'F' ? 'gender-f' : 'gender-m'}`} style={{ marginLeft: 8 }}>
+            <span
+              className={`badge ${g === 'F' ? 'gender-f' : 'gender-m'}`}
+              style={{ marginLeft: 8 }}
+            >
               {g === 'F' ? 'Fém.' : 'Masc.'}
             </span>
           )}
@@ -435,4 +686,3 @@ function PouleRow({ poule, onOpen }: { poule: Poule; onOpen: () => void }) {
     </button>
   )
 }
-

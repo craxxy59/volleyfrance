@@ -509,8 +509,14 @@ img {
 
 .filters-row {
   display: grid;
+  grid-template-columns: 1fr;
   gap: 10px;
   margin-bottom: 14px;
+}
+@media (min-width: 520px) {
+  .filters-row:has(> .filter-select:nth-child(2)) {
+    grid-template-columns: 1fr 1fr;
+  }
 }
 
 .filter-select {

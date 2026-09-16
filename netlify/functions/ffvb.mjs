@@ -1,7 +1,10 @@
 /**
- * Netlify function for /ffvb-api/* (redirect rewrite)
- * → https://volley-ball.vercel.app/api/*
+ * Netlify function for /ffvb-api/*
+ * → départements : scrape ffvbbeach.org
+ * → sinon : https://volley-ball.vercel.app/api/*
  */
+import { handleDeptApi } from '../../shared/ffvbDept.mjs'
+
 const UPSTREAM = 'https://volley-ball.vercel.app/api'
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
@@ -38,7 +41,6 @@ async function fetchUpstream(url, retries = 4) {
 
 function extractSubpath(event) {
   const rawPath = event.path || ''
-  // Common rewrite shapes
   if (rawPath.includes('/ffvb-api/')) {
     return rawPath.split('/ffvb-api/')[1] || ''
   }
@@ -48,10 +50,8 @@ function extractSubpath(event) {
     if (rest.startsWith('/')) rest = rest.slice(1)
     return rest
   }
-  // query fallback
   const qp = event.queryStringParameters || {}
   if (qp.path) return qp.path
-  // rawUrl
   try {
     const u = new URL(event.rawUrl || '', 'http://localhost')
     if (u.pathname.includes('/ffvb-api/')) {
@@ -61,6 +61,25 @@ function extractSubpath(event) {
     /* ignore */
   }
   return ''
+}
+
+function collectQuery(event) {
+  const out = {}
+  const qp = event.queryStringParameters || {}
+  for (const [k, v] of Object.entries(qp)) {
+    if (k === 'path') continue
+    if (v != null) out[k] = v
+  }
+  if (event.rawQuery) {
+    try {
+      const raw = new URLSearchParams(event.rawQuery)
+      raw.delete('path')
+      for (const [k, v] of raw.entries()) out[k] = v
+    } catch {
+      /* ignore */
+    }
+  }
+  return out
 }
 
 export async function handler(event) {
@@ -76,32 +95,28 @@ export async function handler(event) {
 
   try {
     const sub = extractSubpath(event)
-    // Rebuild query without helper keys
-    const params = new URLSearchParams()
-    const qp = event.queryStringParameters || {}
-    for (const [k, v] of Object.entries(qp)) {
-      if (k === 'path') continue
-      if (v != null) params.set(k, v)
-    }
-    // multi-value
-    const multi = event.multiValueQueryStringParameters || {}
-    for (const [k, arr] of Object.entries(multi)) {
-      if (k === 'path') continue
-      ;(arr || []).forEach((v) => params.append(k, v))
-    }
-    // Prefer rawQuery if present and clean
-    let qs = ''
-    if (event.rawQuery) {
-      const raw = new URLSearchParams(event.rawQuery)
-      raw.delete('path')
-      const s = raw.toString()
-      qs = s ? `?${s}` : ''
-    } else {
-      const s = params.toString()
-      qs = s ? `?${s}` : ''
+    const query = collectQuery(event)
+
+    const dept = await handleDeptApi(sub, query)
+    if (dept) {
+      return {
+        statusCode: dept.status,
+        headers: {
+          'Content-Type': dept.ctype,
+          'Cache-Control': 'public, max-age=60',
+          'Access-Control-Allow-Origin': '*',
+          'X-VF-Source': 'ffvbbeach-dept',
+        },
+        body: dept.body,
+      }
     }
 
-    const target = `${UPSTREAM}/${sub}${qs}`
+    const params = new URLSearchParams()
+    for (const [k, v] of Object.entries(query)) {
+      if (v != null) params.set(k, v)
+    }
+    const qs = params.toString()
+    const target = `${UPSTREAM}/${sub}${qs ? `?${qs}` : ''}`
     const result = await fetchUpstream(target)
     return {
       statusCode: result.statusCode,

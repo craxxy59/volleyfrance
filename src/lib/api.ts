@@ -1,4 +1,13 @@
-import type { Club, Entity, LiveMatch, Match, Poule, RankingRow, Stats } from '../types'
+import type {
+  Club,
+  Department,
+  Entity,
+  LiveMatch,
+  Match,
+  Poule,
+  RankingRow,
+  Stats,
+} from '../types'
 
 const FFVB = '/ffvb-api'
 const FFVOLLEY = '/ffvolley-api'
@@ -94,6 +103,18 @@ export async function fetchEntities(): Promise<Entity[]> {
   return data.entities || []
 }
 
+/** Comités départementaux (catalogue + scrape ffvbbeach.org) */
+export async function fetchDepartments(ligueCodent?: string): Promise<Department[]> {
+  const data = await getJson<{ departments: Department[] }>(
+    `${FFVB}/departments${qs({ ligue: ligueCodent })}`,
+  )
+  return data.departments || []
+}
+
+export function isDeptCodent(codent?: string | null): boolean {
+  return /^PT/i.test(String(codent || ''))
+}
+
 export async function fetchNationalPoules(): Promise<Poule[]> {
   const data = await getJson<{ poules: Poule[] }>(`${FFVB}/nationals/poules`)
   return data.poules || []
@@ -102,6 +123,14 @@ export async function fetchNationalPoules(): Promise<Poule[]> {
 export async function fetchPoules(codent?: string): Promise<Poule[]> {
   const data = await getJson<{ poules: Poule[] }>(`${FFVB}/poules${qs({ codent })}`)
   return data.poules || []
+}
+
+/** Classement départemental (scrape officiel) — fallback si rankings/:id indispo */
+export async function fetchDeptRankings(
+  codent: string,
+  pouleCode: string,
+): Promise<{ rankings: RankingRow[]; poule_name?: string; count: number }> {
+  return getJson(`${FFVB}/departments/${encodeURIComponent(codent)}/rankings${qs({ poule: pouleCode })}`)
 }
 
 export async function fetchNationalMatches(params: {

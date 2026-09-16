@@ -18,8 +18,11 @@ Test :
 ```text
 https://TON-APP.vercel.app/ffvb-api/stats
 https://TON-APP.vercel.app/ffvolley-api/v3/clubs
+https://TON-APP.vercel.app/ffvb-api/departments?ligue=LIFL
+https://TON-APP.vercel.app/ffvb-api/poules?codent=PTFL59
 ```
 
+> Les compétitions **départementales** (codent `PT…`, ex. Nord `PTFL59`) sont scrapées en direct depuis le site officiel `ffvbbeach.org` (fichier `shared/ffvbDept.mjs`).
 ---
 
 ## B. Netlify (recommandé pour Android + notifications)
@@ -50,9 +53,12 @@ Tu peux la renommer : Site settings → Domain management.
 ```text
 https://TON-SITE.netlify.app/ffvb-api/stats
 https://TON-SITE.netlify.app/ffvolley-api/v3/clubs
+https://TON-SITE.netlify.app/ffvb-api/departments?ligue=LIFL
+https://TON-SITE.netlify.app/ffvb-api/poules?codent=PTFL59
 ```
 → JSON attendu (pas une 404 HTML).
 
+Les **départementales** passent par la même function `ffvb` + scrape `shared/ffvbDept.mjs` (site officiel FFVB).
 ### 5. Notifications Android (Web Push)
 Génère des clés VAPID (une fois) :
 

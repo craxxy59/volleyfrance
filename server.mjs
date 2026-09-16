@@ -9,6 +9,7 @@ import { createServer as createViteServer } from 'vite'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import fs from 'node:fs'
+import { handleDeptApi } from './shared/ffvbDept.mjs'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const PORT = Number(process.env.PORT || 5173)
@@ -154,11 +155,25 @@ async function main() {
     })
   })
 
-  // ─── FFVB results bridge: /ffvb-api/* → volley-ball.vercel.app/api/* ───
+  // ─── FFVB results bridge: /ffvb-api/* → volley-ball.vercel.app/api/*
+  //     + scrape départemental ffvbbeach.org pour les codent PT* ───
   app.use('/ffvb-api', async (req, res) => {
     try {
-      // req.url includes query string, path relative to mount
       const suffix = req.url || '/'
+      const u = new URL(suffix, 'http://local')
+      const subPath = u.pathname.replace(/^\//, '')
+      const query = Object.fromEntries(u.searchParams.entries())
+
+      // Départemental (site officiel) — prioritaire sur l’upstream
+      const dept = await handleDeptApi(subPath, query)
+      if (dept) {
+        res.status(dept.status)
+        res.setHeader('Content-Type', dept.ctype)
+        res.setHeader('Cache-Control', 'public, max-age=60')
+        res.setHeader('X-VF-Source', 'ffvbbeach-dept')
+        return res.send(dept.body)
+      }
+
       const target = `${FFVB_UPSTREAM}${suffix.startsWith('/') ? suffix : `/${suffix}`}`
       const result = await fetchDeduped(target, { retries: 4, timeoutMs: 25_000 })
 
@@ -168,7 +183,6 @@ async function main() {
         result.ctype.includes('json') ? 'application/json; charset=utf-8' : result.ctype,
       )
       res.setHeader('Cache-Control', 'no-store')
-      // Help debug intermittent issues
       res.setHeader('X-VF-Upstream', target.replace('https://', ''))
       res.send(result.body)
     } catch (err) {

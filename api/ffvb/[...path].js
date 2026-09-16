@@ -1,7 +1,10 @@
 /**
  * Catch-all: /api/ffvb/*  (and rewritten /ffvb-api/*)
- * → https://volley-ball.vercel.app/api/*
+ * → départements : scrape ffvbbeach.org
+ * → sinon : https://volley-ball.vercel.app/api/*
  */
+import { handleDeptApi } from '../../../shared/ffvbDept.mjs'
+
 const UPSTREAM = 'https://volley-ball.vercel.app/api'
 
 function sleep(ms) {
@@ -47,14 +50,25 @@ export default async function handler(req, res) {
   try {
     const parts = [].concat(req.query.path || [])
     const sub = parts.map((p) => String(p).split('/').map(encodeURIComponent).join('/')).join('/')
-    // Rebuild query without the catch-all "path" key
-    const q = new URLSearchParams()
+    const q = {}
     for (const [k, v] of Object.entries(req.query)) {
       if (k === 'path') continue
-      if (Array.isArray(v)) v.forEach((x) => q.append(k, x))
-      else if (v != null) q.set(k, String(v))
+      if (Array.isArray(v)) q[k] = v[0]
+      else if (v != null) q[k] = String(v)
     }
-    const qs = q.toString()
+
+    const dept = await handleDeptApi(sub, q)
+    if (dept) {
+      res.statusCode = dept.status
+      res.setHeader('Content-Type', dept.ctype)
+      res.setHeader('Cache-Control', 's-maxage=60, stale-while-revalidate=300')
+      res.setHeader('X-VF-Source', 'ffvbbeach-dept')
+      return res.end(dept.body)
+    }
+
+    const qsObj = new URLSearchParams()
+    for (const [k, v] of Object.entries(q)) qsObj.set(k, v)
+    const qs = qsObj.toString()
     const target = `${UPSTREAM}/${sub}${qs ? `?${qs}` : ''}`
 
     const result = await fetchUpstream(target)

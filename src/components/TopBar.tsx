@@ -2,25 +2,23 @@ import { Link } from 'react-router-dom'
 import { Bell } from 'lucide-react'
 import { getNotifPrefs } from '../lib/notifications'
 import { useEffect, useState } from 'react'
-
-/** Current FFVB season label (full, not abbreviated cryptically) */
-export function currentSeasonLabel() {
-  // Saison sportive FR : juil. N → juin N+1
-  const now = new Date()
-  const y = now.getFullYear()
-  const month = now.getMonth() + 1
-  const start = month >= 7 ? y : y - 1
-  const end = start + 1
-  return `${start}/${String(end).slice(2)}`
-}
+import { currentSeasonFull, currentSeasonShort } from '../lib/season'
 
 interface Props {
   subtitle?: string
   right?: React.ReactNode
+  /** Optional override, e.g. from API "2026/2027" */
+  season?: string | null
 }
 
-export function TopBar({ subtitle = 'Clubs · scores · équipes suivies', right }: Props) {
+export function TopBar({
+  subtitle = 'Clubs · scores · équipes suivies',
+  right,
+  season,
+}: Props) {
   const [notifOn, setNotifOn] = useState(() => getNotifPrefs().enabled)
+  const seasonFull = season || currentSeasonFull()
+  const seasonShort = currentSeasonShort(seasonFull)
 
   useEffect(() => {
     const onPrefs = () => setNotifOn(getNotifPrefs().enabled)
@@ -64,8 +62,8 @@ export function TopBar({ subtitle = 'Clubs · scores · équipes suivies', right
           >
             <Bell size={16} />
           </Link>
-          <span className="season-chip" title="Saison sportive en cours">
-            Saison {currentSeasonLabel()}
+          <span className="season-chip" title={`Saison sportive ${seasonFull}`}>
+            {seasonShort}
           </span>
         </div>
       )}

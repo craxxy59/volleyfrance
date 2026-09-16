@@ -6,6 +6,17 @@ export interface Entity {
   type: string
 }
 
+/** Comité départemental FFVB (ffvbbeach.org) */
+export interface Department {
+  codent: string
+  name: string
+  dept: string
+  ligueCodent: string
+  ligueName: string
+  label?: string
+  type?: string
+}
+
 export interface Poule {
   id: number
   poule_id: string
@@ -13,6 +24,8 @@ export interface Poule {
   label?: string
   codent: string
   saison: string
+  entity_name?: string
+  source?: string
 }
 
 export interface Match {
@@ -103,6 +116,8 @@ export interface Stats {
     completed?: number
     scheduled?: number
   }
+  /** e.g. { "2025/2026": 18089 } when provided by the API */
+  matches_by_season?: Record<string, number>
 }
 
 export type FavoriteKind = 'team' | 'club' | 'poule'

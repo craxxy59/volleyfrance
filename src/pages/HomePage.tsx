@@ -15,6 +15,7 @@ import {
 import type { Match, Stats } from '../types'
 import { useFavorites } from '../hooks/useFavorites'
 import { matchBucket } from '../lib/matchStore'
+import { resolveSeasonLabel } from '../lib/season'
 
 export function HomePage() {
   const [stats, setStats] = useState<Stats | null>(null)
@@ -83,9 +84,11 @@ export function HomePage() {
     load()
   }, [])
 
+  const seasonLabel = resolveSeasonLabel(stats)
+
   return (
     <div className="page">
-      <TopBar />
+      <TopBar season={seasonLabel} />
 
       {error && <ErrorState message={error} onRetry={load} />}
 
@@ -94,7 +97,7 @@ export function HomePage() {
           <section className="home-hero">
             <div className="home-hero-copy">
               <p className="eyebrow">
-                <Zap size={14} /> Saison 2025/2026
+                <Zap size={14} /> Saison {seasonLabel}
               </p>
               <h2>Le volley français, centralisé.</h2>
               <p className="lede">
