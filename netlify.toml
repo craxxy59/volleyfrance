@@ -1,4 +1,4 @@
-# Netlify deploy — static Vite app + serverless API bridges
+# Netlify deploy — static Vite app + serverless API bridges + push cron
 [build]
   command = "npm run build"
   publish = "dist"
@@ -7,7 +7,7 @@
 [build.environment]
   NODE_VERSION = "20"
 
-# Proxy API (path forwarded as ?path=)
+# Proxy API
 [[redirects]]
   from = "/ffvb-api/*"
   to = "/.netlify/functions/ffvb?path=:splat"
@@ -30,3 +30,7 @@
   for = "/assets/*"
   [headers.values]
     Cache-Control = "public, max-age=31536000, immutable"
+
+# Background push dispatcher — every 10 minutes
+[functions."push-dispatch"]
+  schedule = "*/10 * * * *"

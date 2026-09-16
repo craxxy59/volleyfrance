@@ -22,7 +22,7 @@ https://TON-APP.vercel.app/ffvolley-api/v3/clubs
 
 ---
 
-## B. Netlify (nouveau)
+## B. Netlify (recommandé pour Android + notifications)
 
 ### 1. Push le code
 ```bash
@@ -53,12 +53,39 @@ https://TON-SITE.netlify.app/ffvolley-api/v3/clubs
 ```
 → JSON attendu (pas une 404 HTML).
 
+### 5. Notifications Android (Web Push)
+Génère des clés VAPID (une fois) :
+
+```bash
+npx web-push generate-vapid-keys
+```
+
+Dans Netlify → **Site configuration → Environment variables**, ajoute :
+
+| Variable | Valeur |
+|----------|--------|
+| `VAPID_PUBLIC_KEY` | clé publique |
+| `VAPID_PRIVATE_KEY` | clé privée |
+| `VAPID_SUBJECT` | `mailto:ton@email.fr` |
+
+Redéploie le site.
+
+Le cron `push-dispatch` tourne **toutes les 10 min** (`netlify.toml`) et envoie une notif quand une équipe suivie a un **nouveau résultat**.
+
+Sur le téléphone :
+1. Chrome → ouvrir le site Netlify  
+2. **Installer l’app** (Ajouter à l’écran d’accueil)  
+3. Dans l’app : **Suivi → Activer les notifications**  
+4. Autoriser Chrome / Android  
+
 ### Fichiers Netlify
 | Fichier | Rôle |
 |---------|------|
-| `netlify.toml` | build + redirects `/ffvb-api/*` et `/ffvolley-api/*` |
+| `netlify.toml` | build + redirects + cron push |
 | `netlify/functions/ffvb.mjs` | bridge résultats FFVB |
 | `netlify/functions/ffvolley.mjs` | bridge clubs / livescore |
+| `netlify/functions/push-*.mjs` | subscribe / dispatch Web Push |
+| `netlify/functions/vapid-public-key.mjs` | expose la clé publique |
 
 ---
 

@@ -1,9 +1,33 @@
+import { Link } from 'react-router-dom'
+import { Bell } from 'lucide-react'
+import { getNotifPrefs } from '../lib/notifications'
+import { useEffect, useState } from 'react'
+
+/** Current FFVB season label (full, not abbreviated cryptically) */
+export function currentSeasonLabel() {
+  // Saison sportive FR : juil. N → juin N+1
+  const now = new Date()
+  const y = now.getFullYear()
+  const month = now.getMonth() + 1
+  const start = month >= 7 ? y : y - 1
+  const end = start + 1
+  return `${start}/${String(end).slice(2)}`
+}
+
 interface Props {
   subtitle?: string
   right?: React.ReactNode
 }
 
 export function TopBar({ subtitle = 'Clubs · scores · équipes suivies', right }: Props) {
+  const [notifOn, setNotifOn] = useState(() => getNotifPrefs().enabled)
+
+  useEffect(() => {
+    const onPrefs = () => setNotifOn(getNotifPrefs().enabled)
+    window.addEventListener('vf-notif-prefs', onPrefs)
+    return () => window.removeEventListener('vf-notif-prefs', onPrefs)
+  }, [])
+
   return (
     <header className="topbar">
       <div className="brand">
@@ -30,7 +54,21 @@ export function TopBar({ subtitle = 'Clubs · scores · équipes suivies', right
           <p>{subtitle}</p>
         </div>
       </div>
-      {right ?? <span className="season-chip">25/26</span>}
+      {right ?? (
+        <div className="topbar-right">
+          <Link
+            to="/notifications"
+            className={`icon-btn${notifOn ? ' active' : ''}`}
+            title="Notifications"
+            aria-label="Notifications"
+          >
+            <Bell size={16} />
+          </Link>
+          <span className="season-chip" title="Saison sportive en cours">
+            Saison {currentSeasonLabel()}
+          </span>
+        </div>
+      )}
     </header>
   )
 }

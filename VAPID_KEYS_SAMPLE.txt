@@ -1,0 +1,6 @@
+# Colle ces valeurs dans Netlify → Environment variables
+# (tu peux aussi régénérer avec: npx web-push generate-vapid-keys)
+
+VAPID_PUBLIC_KEY=BG9HGsiypcMHO8megnf2NeTFQTh1mv4NzbQB1VWX4hz6g_oVZeq-KYdvrimpdDsRDganXAwCc1KV8AMADAAuuhk
+VAPID_PRIVATE_KEY=Bphx_u7LUdf5UCFACPHe1t3oZtUykBG45854RuHJp9I
+VAPID_SUBJECT=mailto:volleyfrance@example.com

@@ -7,11 +7,11 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.svg', 'apple-touch-icon.png'],
+      includeAssets: ['favicon.svg', 'apple-touch-icon.png', 'push-handler.js'],
       manifest: {
         name: 'VolleyFrance',
         short_name: 'VolleyFR',
-        description: 'Clubs, compétitions, scores et poules du volley français',
+        description: 'Clubs, scores, poules et notifs des équipes de volley en France',
         theme_color: '#0a0e17',
         background_color: '#0a0e17',
         display: 'standalone',
@@ -19,41 +19,25 @@ export default defineConfig({
         lang: 'fr',
         start_url: '/',
         icons: [
-          {
-            src: 'pwa-192.png',
-            sizes: '192x192',
-            type: 'image/png',
-          },
-          {
-            src: 'pwa-512.png',
-            sizes: '512x512',
-            type: 'image/png',
-          },
-          {
-            src: 'pwa-512.png',
-            sizes: '512x512',
-            type: 'image/png',
-            purpose: 'maskable',
-          },
+          { src: 'pwa-192.png', sizes: '192x192', type: 'image/png' },
+          { src: 'pwa-512.png', sizes: '512x512', type: 'image/png' },
+          { src: 'pwa-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
         ],
       },
       workbox: {
+        importScripts: ['/push-handler.js'],
         navigateFallback: '/index.html',
         runtimeCaching: [
           {
-            urlPattern: /^https:\/\/volley-ball\.vercel\.app\/api\/.*/i,
+            urlPattern: ({ url }) =>
+              url.pathname.startsWith('/ffvb-api/') ||
+              url.pathname.startsWith('/ffvolley-api/') ||
+              url.pathname.startsWith('/.netlify/functions/'),
             handler: 'NetworkFirst',
             options: {
-              cacheName: 'ffvb-results',
-              expiration: { maxEntries: 80, maxAgeSeconds: 60 * 30 },
-            },
-          },
-          {
-            urlPattern: /^https:\/\/api\.my\.ffvolley\.org\/.*/i,
-            handler: 'NetworkFirst',
-            options: {
-              cacheName: 'ffvolley-api',
-              expiration: { maxEntries: 40, maxAgeSeconds: 60 * 60 },
+              cacheName: 'vf-api',
+              networkTimeoutSeconds: 8,
+              expiration: { maxEntries: 80, maxAgeSeconds: 60 * 15 },
             },
           },
         ],
@@ -65,7 +49,6 @@ export default defineConfig({
     port: 5173,
     allowedHosts: true,
     proxy: {
-      // Used only by `npm run dev:vite`. Prefer `npm run dev` (server.mjs).
       '/ffvb-api': {
         target: 'https://volley-ball.vercel.app',
         changeOrigin: true,

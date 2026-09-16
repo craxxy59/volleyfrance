@@ -9,8 +9,7 @@ createRoot(document.getElementById('root')!).render(
   </StrictMode>,
 )
 
-// PWA auto-update registration (injected by vite-plugin-pwa in build;
-// in dev we skip silently)
+// Register SW in production (required for Android Web Push + local notifs via SW)
 if (import.meta.env.PROD) {
   import('virtual:pwa-register')
     .then(({ registerSW }) => {

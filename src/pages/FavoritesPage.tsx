@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Star, ChevronRight, Trash2, Bell } from 'lucide-react'
+import { Star, ChevronRight, Trash2, Bell, BellRing } from 'lucide-react'
 import { TopBar } from '../components/TopBar'
+import { getNotifPrefs } from '../lib/notifications'
 import { MatchCard } from '../components/MatchCard'
 import { StatusFilter } from '../components/StatusFilter'
 import { SkeletonList, EmptyState } from '../components/Loading'
@@ -16,11 +17,18 @@ export function FavoritesPage() {
   const [matches, setMatches] = useState<Match[]>([])
   const [loading, setLoading] = useState(false)
   const [bucket, setBucket] = useState<MatchBucket>('all')
+  const [notifOn, setNotifOn] = useState(() => getNotifPrefs().enabled)
 
   const teams = favorites.filter((f) => f.kind === 'team')
   const clubs = favorites.filter((f) => f.kind === 'club')
   const poules = favorites.filter((f) => f.kind === 'poule')
   const teamKey = teams.map((t) => t.id).join('|')
+
+  useEffect(() => {
+    const onPrefs = () => setNotifOn(getNotifPrefs().enabled)
+    window.addEventListener('vf-notif-prefs', onPrefs)
+    return () => window.removeEventListener('vf-notif-prefs', onPrefs)
+  }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -72,6 +80,21 @@ export function FavoritesPage() {
   return (
     <div className="page">
       <TopBar subtitle="Équipes suivies · alertes perso" />
+
+      <Link to="/notifications" className={`notif-cta card card-clickable${notifOn ? ' on' : ''}`}>
+        <div className="notif-cta-icon">
+          {notifOn ? <BellRing size={18} /> : <Bell size={18} />}
+        </div>
+        <div className="notif-cta-body">
+          <strong>{notifOn ? 'Notifications activées' : 'Activer les notifications'}</strong>
+          <span>
+            {notifOn
+              ? 'Alerte quand une équipe suivie finit un match (Android).'
+              : 'Reçois une notif Android dès qu’une équipe suivie a un résultat.'}
+          </span>
+        </div>
+        <ChevronRight size={18} style={{ color: 'var(--text-dim)' }} />
+      </Link>
 
       {!favorites.length ? (
         <EmptyState
